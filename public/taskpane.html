@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>0x15k Office AI</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="vendor/marked.min.js"></script>
+  <link rel="stylesheet" href="css/taskpane.css" />
+</head>
+<body>
+  <!-- Single 42px Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="host-pill" id="host-badge" title="Active Microsoft Office Host">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="host-label">Word</span>
+      </span>
+      <select id="quick-model-select" class="model-select" title="Select AI model">
+        <option value="gemini-3.8-flash-low">⚡ Flash Fast</option>
+        <option value="gemini-3.8-flash-medium">✨ Flash Med</option>
+        <option value="claude-sonnet-5-5-low">🧠 Claude Sonnet</option>
+        <option value="gemini-4-neon-low">🚀 Gemini 4 Neon</option>
+      </select>
+    </div>
+
+    <div class="header-right">
+      <button class="header-pill-btn" id="btn-undo" title="Undo last AI edit" style="display: none;">
+        ↩ <span id="undo-count">0</span>
+      </button>
+      <button class="icon-btn" id="btn-clear" title="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>
+      <button class="icon-btn" id="btn-settings" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Spacious Chat Area -->
+  <main class="chat-container" id="chat-container">
+    <div class="welcome-state" id="welcome-card">
+      <div class="welcome-heading">Office AI Agent</div>
+      <p class="welcome-sub" id="welcome-sub">
+        Edit documents, build spreadsheets, generate slides, or paste any URL for live web context.
+      </p>
+      <div class="welcome-starters" id="welcome-starters"></div>
+    </div>
+  </main>
+
+  <!-- Unified Floating Composer -->
+  <footer class="composer-wrapper">
+    <div class="slash-menu" id="slash-menu" role="listbox"></div>
+
+    <div class="composer-card">
+      <textarea
+        id="prompt-input"
+        class="prompt-textarea"
+        placeholder="Ask for any edit, paste a URL, or type /..."
+        rows="2"
+      ></textarea>
+
+      <div class="composer-bar">
+        <div class="composer-controls">
+          <button type="button" class="subtle-pill active" id="btn-scope-toggle" title="Toggle between Full Document and Selection">
+            Full Doc
+          </button>
+          <button type="button" class="subtle-pill" id="btn-clean-format" title="Standardize document font, sizes, and spacing">
+            Clean Format
+          </button>
+          <label class="auto-pill" title="Apply edits automatically when response arrives">
+            <input type="checkbox" id="toggle-auto-apply" checked />
+            <span>Auto</span>
+          </label>
+        </div>
+
+        <button id="btn-send" class="send-btn" title="Send (Enter)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Settings Slide-Over -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">Settings</span>
+        <button class="icon-btn" id="btn-close-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="cfg-provider">AI Provider</label>
+          <select id="cfg-provider" class="form-select">
+            <option value="agy">Local agy CLI (Free, Fast)</option>
+            <option value="gemini">Google Gemini API</option>
+            <option value="claude">Anthropic Claude API</option>
+            <option value="openai">OpenAI API</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="group-api-key" style="display: none;">
+          <label class="form-label" for="cfg-api-key">API Key</label>
+          <input type="password" id="cfg-api-key" class="form-input" placeholder="Enter your API key..." />
+        </div>
+
+        <div class="form-group" id="group-model" style="display: none;">
+          <label class="form-label" for="cfg-model">Cloud Model</label>
+          <input type="text" id="cfg-model" class="form-input" placeholder="e.g., gemini-2.0-flash or claude-3-5-sonnet-latest" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="cfg-default-font">Standard Word Font</label>
+          <select id="cfg-default-font" class="form-select">
+            <option value="Calibri">Calibri</option>
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Georgia">Georgia</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-agent-mode" checked />
+            <span>Surgical Agent Mode (Direct Office edits)</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-track-changes" />
+            <span>Always apply with Track Changes (Word)</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="toggle-label">
+            <input type="checkbox" id="cfg-rich-format" checked />
+            <span>Rich HTML insertion (Word)</span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="cfg-system-prompt">Custom System Prompt</label>
+          <textarea id="cfg-system-prompt" class="form-textarea" rows="3" placeholder="Optional custom instructions..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <div class="skills-header-row">
+            <label class="form-label">Active Skills</label>
+            <button type="button" class="subtle-pill" id="btn-skillfy-now" title="Extract a reusable skill from current conversation">
+              🧠 Learn from Chat (/skillfy)
+            </button>
+          </div>
+          <div id="skills-list" class="skills-list">
+            <span class="skill-empty">Loading skills...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="subtle-pill" id="btn-reset-settings">Reset</button>
+        <button class="primary-btn" id="btn-save-settings">Save</button>
+      </div>
+      <div style="font-size:10.5px; color:#6B7280; text-align:center; padding:10px 0 4px 0;">
+        0x15k Office AI • Author: 0x15k - YL
+      </div>
+    </div>
+  </div>
+
+  <script src="taskpane.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# HTTPS Certificates & Keys (auto-generated locally on startup / install)
+cert.pem
+key.pem
+
+# Environment and Local Config
+.env
+.env.*
+.source-dir
+
+# Logs
+*.log
+npm-debug.log*
+
+# macOS and OS Artifacts
+.DS_Store
+Thumbs.db
