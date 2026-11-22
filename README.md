@@ -40,13 +40,13 @@
 
 ### 1. Microsoft Word (Universal Document Architecture)
 
-- **Surgical & Full-Document Editing:** Full context ingestion reads active paragraphs, headings, list items, and hyperlinks. Automatically detects whether to modify a single paragraph, rewrite an entire section (`replace_section`), or standardize the entire document.
-- **Universal Dual-Split Alignment:** Automatically turns lines with dates and locations (`Organization | Location` or `Degree | Oct 2023 – Oct 2024`) into seamless 100% width borderless tables anchored to the right margin. Permanently eliminates typewriter tab stops (`\t`) that cause asymmetrical indentation in Word.
-- **List Hygiene & Double-Arrow Purge:** Automatically strips redundant leading typewriter arrows (`• -> ` → `•`), cleans double bullets, and deletes ghost bullet lines (lines containing only stray bullets or spaces).
-- **Auto-Bulleting in List Sections:** Dedicated list sections (e.g. `HONORS & AWARDS`, `CERTIFICATIONS`, `AWARDS`) automatically detect unbulleted items (such as rankings or awards separated across page breaks) and convert them into native active Word bullets.
-- **Style Persistence & Multiple 1.15× Spacing:** Automatically inspects the document's predominant font family, font size, and native Multiple line spacing (e.g. 1.15× converted to exact twips/points), preserving line density and paragraph spacing after every edit.
-- **Hyperlink Extraction & Preservation:** Detects existing URLs in the document and exposes them as `[Text](url)`. When generating replacements, outputs real clickable Word hyperlinks (`<a href="...">`) so URLs are never lost.
-- **Redline Diff Visualizer & OOXML Undo:** Side-by-side diff preview for replacements, track changes mode support, and 10-level deep transactional OOXML snapshots for 100% fidelity rollbacks.
+- **Surgical & Structural Document Manipulation:** Deep document context ingestion analyzes paragraphs, headings, list hierarchies, tables, and embedded hyperlink trees. Intelligently determines the optimal execution scope: targeted paragraph modifications (`replace_selection`), full semantic section rewrites (`replace_section`), or holistic document-wide standardization (`standardize_document`).
+- **Dual-Margin Layout Synchronization:** Automatically detects dual-aligned metadata pairs (such as entity titles on the left and temporal markers, locations, or status tags on the right) and maps them into 100% width borderless layout grids anchored flush to opposing page margins. Permanently eliminates fragile typewriter tab stops (`\t`) and pipe delimiters (`|`) that collapse across different devices, printers, or zoom levels.
+- **Hierarchical List Hygiene & Bullet Normalization:** Automatically repairs damaged or non-standard list hierarchies. Cleans stray typewriter artifacts (such as double bullets, dangling arrows, or duplicate dashes), eliminates orphaned blank bullet lines, and converts plain text enumerations into native, structured Word bullet lists.
+- **Cross-Break Continuity & List Healing:** Identifies broken or fragmented list items that span across page and column breaks, reconnecting split content into continuous, uniformly indented bullet structures without manual intervention.
+- **Typographic & Metric Persistence:** Introspects the document’s active typographic profile—including font family, font size, paragraph margins, and proportional line height (converting multiplier ratios into native twip units)—ensuring all newly synthesized content visually integrates without disrupting document density.
+- **Semantic Link & Citation Preservation:** Automatically identifies, extracts, and parses active URLs and inline citations into structured Markdown links. On insertion, re-encodes them into compliant OpenXML hyperlink relationships (`<w:hyperlink>`), preventing hyperlink degradation or accidental stripping during large-scale edits.
+- **Transactional Redline Diff & OOXML Snapshots:** Renders an interactive side-by-side redline visualizer before committing changes, supports Microsoft Word's native Track Changes mode, and maintains a multi-tier transactional OOXML rollback buffer for instantaneous, lossless state reversibility.
 
 ### 2. Microsoft Excel (Financial & Data Grid Engine)
 
@@ -154,47 +154,47 @@ What `install.ps1` does automatically:
 
 ### Using in Microsoft Word
 
-- **Standardize Formatting:** Click the **Clean Format** button at the bottom of the taskpane, or type:
+- **Global Layout & Typographic Standardization:** Click the **Clean Format** button at the bottom of the taskpane, or type:
   ```text
-  Estandariza la tipografía a Aptos 10.5pt, interlineado 1.15x y alinea las fechas y lugares a la derecha
+  Standardize the document typography: set body text to Aptos 11pt, 1.15 line spacing, 6pt space-after, and format all section headings into a bold title hierarchy.
   ```
-- **Edit Sections Surgically:**
+- **Surgical Section Refactoring & Dual Alignment:**
   ```text
-  Reescribe la sección EDUCATION usando tablas dual-split para que las instituciones y las fechas/ubicaciones queden alineadas simétricamente a los márgenes
+  Rewrite this section into structured blocks, using dual-split alignment to anchor secondary metadata flush to the right margin.
   ```
-- **Fix Bullets & Formatting:**
+- **List & Hierarchy Normalization:**
   ```text
-  Alinea y corrige las viñetas en HONORS & AWARDS y elimina los dobles marcadores
+  Audit and normalize all bullet points across the document, fixing irregular indentations and stripping redundant typewriter markers.
   ```
-- **Live URL Context:** Paste any URL directly into your prompt:
+- **Live URL Context & Document Synthesis:** Paste any URL directly into your prompt:
   ```text
-  Resume los requisitos de seguridad de esta vacante https://example.com/job y adapta mi resumen profesional para este rol
+  Analyze the technical specification at https://example.com/spec-doc and synthesize a summary of key requirements into this document.
   ```
 
 ### Using in Microsoft Excel
 
-- **Generate Financial Models & Tables:**
+- **Generate Financial Models & Structured Tables:**
   ```text
-  Crea una tabla financiera para Q1 a Q4 con Ingresos, Costos, Utilidad y Margen (%) con createTable: true
+  Build a quarterly financial summary table from Q1 to Q4 with Revenue, COGS, Gross Profit, and Margin (%), formatted as a native banded table.
   ```
 - **Insert Dynamic Formulas:**
   ```text
-  Calcula el total de la columna B en la celda B10 usando una fórmula de suma
+  Calculate the column total in cell B10 using a dynamic SUM formula and average in B11.
   ```
-- **Format Numbers & Currencies:**
+- **Apply Number & Accounting Formatting:**
   ```text
-  Aplica formato de moneda ($#,##0.00) a las columnas B y C, y porcentaje (0.0%) a la columna D
+  Apply currency format ($#,##0.00) to columns B and C, and percentage format (0.0%) to column D.
   ```
 
 ### Using in Microsoft PowerPoint
 
 - **Create Multi-Slide Presentations:**
   ```text
-  Genera una presentación ejecutiva de 4 diapositivas sobre DevSecOps y Threat Modeling para el comité directivo
+  Generate an executive 4-slide presentation on Threat Modeling and Architecture Review for a leadership briefing.
   ```
-- **Refine Selected Slides:** Select any shape or text box on a slide and type:
+- **Refine Selected Shapes & Text:** Select any shape or text box on a slide and type:
   ```text
-  Reemplaza el texto seleccionado con una conclusión ejecutiva sobre ROI en seguridad
+  Rewrite this selected text frame into 3 action-oriented bullet points emphasizing security ROI.
   ```
 
 ---
