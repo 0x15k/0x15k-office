@@ -6,7 +6,7 @@
   <title>0x15k Office AI</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script src="vendor/marked.min.js"></script>
-  <link rel="stylesheet" href="css/taskpane.css?v=5.1.0" />
+  <link rel="stylesheet" href="css/taskpane.css?v=5.2.0" />
 </head>
 <body>
   <!-- Single 42px Header -->
@@ -53,11 +53,18 @@
   <!-- Spacious Chat Area -->
   <main class="chat-container" id="chat-container">
     <div class="welcome-state" id="welcome-card">
-      <div class="welcome-heading">Office AI Agent</div>
-      <p class="welcome-sub" id="welcome-sub">
-        Edit documents, build spreadsheets, generate slides, or paste any URL for live web context.
-      </p>
-      <div class="welcome-starters" id="welcome-starters"></div>
+      <div class="welcome-header-box">
+        <div class="welcome-heading">⚡ 0x15k Office AI</div>
+        <p class="welcome-sub" id="welcome-sub">
+          Autonomous Office Agent with native DrawingML & OOXML execution.
+        </p>
+      </div>
+
+      <div class="skills-section-title">Get started with these skills:</div>
+      <div class="skills-pill-grid" id="skills-pill-grid"></div>
+
+      <div class="skills-section-title" style="margin-top:8px;">Quick suggestions:</div>
+      <div class="copilot-chip-list" id="welcome-starters"></div>
     </div>
   </main>
 
@@ -65,11 +72,23 @@
   <footer class="composer-wrapper">
     <div class="slash-menu" id="slash-menu" role="listbox"></div>
 
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding:0 2px;">
+      <div class="mode-toggle-group" id="mode-toggle-group" title="Switch between direct document editing and conversational consultation">
+        <button type="button" class="mode-toggle-btn active" id="btn-mode-edit" data-mode="edit">
+          ⚡ Allow Editing
+        </button>
+        <button type="button" class="mode-toggle-btn" id="btn-mode-chat" data-mode="chat">
+          💬 Chat Only
+        </button>
+      </div>
+      <div id="active-skill-indicator" style="font-size:11px; color:var(--text-muted); font-weight:500;"></div>
+    </div>
+
     <div class="composer-card">
       <textarea
         id="prompt-input"
         class="prompt-textarea"
-        placeholder="Ask for any edit, paste a URL, or type /..."
+        placeholder="Tell me how to edit your document, paste a URL, or type /..."
         rows="2"
       ></textarea>
 
@@ -191,6 +210,6 @@
     </div>
   </div>
 
-  <script src="taskpane.js?v=5.1.0"></script>
+  <script src="taskpane.js?v=5.2.0"></script>
 </body>
 </html>

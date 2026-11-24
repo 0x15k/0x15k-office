@@ -302,6 +302,7 @@ function printHelp() {
       "  office-ai skills                                List active built-in and learned skills\n" +
       "  office-ai start | stop | restart                Manage background LaunchAgent\n" +
       "  office-ai logs                                  Show recent server logs\n" +
+      "  office-ai mcp                                   Start native Model Context Protocol (MCP) server\n" +
       "  office-ai uninstall                             Remove LaunchAgent, manifests, and CLI\n" +
       '  office-ai [--host Word|Excel|PowerPoint] [--file path] [--model name] [--json] "<prompt>"'
   );
@@ -391,6 +392,9 @@ async function main() {
         break;
       case "logs":
         handleLogs();
+        break;
+      case "mcp":
+        require("./office-mcp.js");
         break;
       case "":
       case "--help":

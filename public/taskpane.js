@@ -9,18 +9,26 @@ const HOST_CONFIG = {
     dotClass: "",
     subtitle: "Edit documents, standardize formatting, add headers/footers, or paste any URL.",
     cleanLabel: "Clean Format",
+    skills: [
+      { cmd: "/chart", label: "📊 Chart Designer", prompt: "Restaura el gráfico de barras apiladas limpio sin labels, sin título y en Aptos 9" },
+      { cmd: "/check-doc", label: "🔍 Check Doc", prompt: "Revisa todo el formato y estructura del documento exhaustivamente y corrige cualquier inconsistencia." },
+      { cmd: "/copy-edit", label: "✍️ Copy-Edit", prompt: "Revisa la redacción de la sección seleccionada asegurando tono profesional, conciso y formal." },
+      { cmd: "/summarize", label: "📋 Summarize", prompt: "Genera un resumen ejecutivo de los hallazgos y estado de recertificación con una tabla de métricas." },
+      { cmd: "/track-changes", label: "📝 Track Changes", prompt: "/track" },
+      { cmd: "/skillfy", label: "🧠 Learn Skill", prompt: "/skillfy " }
+    ],
     starters: [
       {
-        label: "📐 Standardize CV or document formatting & spacing",
-        prompt: "Standardize formatting, fonts, spacing, and hierarchy across the entire document while keeping its original language."
+        label: "💡 Catch me up on this document",
+        prompt: "Dame un resumen ejecutivo completo de los puntos clave, el propósito y el estado de este documento."
       },
       {
-        label: "✨ Improve clarity, grammar, and executive tone",
-        prompt: "Improve clarity, flow, and grammar while preserving the document's original language and meaning."
+        label: "✨ Suggest ways to improve this document",
+        prompt: "Analiza el documento e identifica oportunidades de mejora en formato, jerarquía, visualización y estilo."
       },
       {
-        label: "📊 Convert text into a clean comparison table",
-        prompt: "Convert this information into a clean comparison table with headers."
+        label: "📊 Restaura el gráfico limpio sin labels",
+        prompt: "Restaura el gráfico de barras apiladas limpio sin labels, sin título y en Aptos 9"
       }
     ],
     slashCommands: [
@@ -42,6 +50,14 @@ const HOST_CONFIG = {
     dotClass: "excel",
     subtitle: "Build tables, write formulas, format ranges, or import structured web URLs into cells.",
     cleanLabel: "Auto-Fit",
+    skills: [
+      { cmd: "/formula", label: "🧮 Auto Formula", prompt: "Analyze the selected data and write the optimal Excel formulas (SUM, AVERAGE, IF, VLOOKUP) with clean number formatting." },
+      { cmd: "/table", label: "📊 Build Table", prompt: "Create a structured financial/tracking table starting at A1 with bold headers, alternating row colors, and totals." },
+      { cmd: "/format", label: "🎨 Format Cells", prompt: "Standardize column widths, format headers with dark background and white text, and apply currency formatting." },
+      { cmd: "/sheet", label: "📑 Summary Sheet", prompt: "Create a new summary worksheet aggregating key metrics from this dataset." },
+      { cmd: "/chart", label: "📈 Insert Chart", prompt: "Generate a clean column/bar chart from the selected range with professional corporate styling." },
+      { cmd: "/skillfy", label: "🧠 Learn Skill", prompt: "/skillfy " }
+    ],
     starters: [
       {
         label: "📊 Build a formatted financial/tracking table",
@@ -69,6 +85,14 @@ const HOST_CONFIG = {
     dotClass: "powerpoint",
     subtitle: "Generate structured slide decks, rewrite bullet points, or turn URLs into presentations.",
     cleanLabel: "",
+    skills: [
+      { cmd: "/slides", label: "📽️ Generate Deck", prompt: "Generate a crisp 4-slide executive presentation outline with titles and punchy bullet points." },
+      { cmd: "/tighten", label: "✍️ Punchy Bullets", prompt: "Rewrite the selected slide text into concise, high-impact executive bullet points." },
+      { cmd: "/layout", label: "📐 Modern Layout", prompt: "Restructure the content on this slide for maximum executive visual impact and clean hierarchy." },
+      { cmd: "/visuals", label: "🎨 Slide Visuals", prompt: "Recommend and format visual layout callouts or comparison tables for this slide." },
+      { cmd: "/translate", label: "🌐 Translate Deck", prompt: "Translate the selected slide text to English while maintaining concise bullet structure." },
+      { cmd: "/skillfy", label: "🧠 Learn Skill", prompt: "/skillfy " }
+    ],
     starters: [
       {
         label: "📽️ Generate a 4-slide executive presentation",
@@ -283,6 +307,28 @@ function initUI() {
   document.getElementById("btn-settings").onclick = openSettings;
   document.getElementById("btn-clean-format").onclick = handleCleanFormat;
 
+  const btnModeEdit = document.getElementById("btn-mode-edit");
+  const btnModeChat = document.getElementById("btn-mode-chat");
+  function setAgentMode(isEdit) {
+    state.settings.agentMode = isEdit;
+    if (isEdit) {
+      btnModeEdit?.classList.add("active");
+      btnModeChat?.classList.remove("active");
+      const pIn = document.getElementById("prompt-input");
+      if (pIn) pIn.placeholder = "Tell me how to edit your document, paste a URL, or type /...";
+      showToast("Mode: Allow Editing (direct document changes)");
+    } else {
+      btnModeChat?.classList.add("active");
+      btnModeEdit?.classList.remove("active");
+      const pIn = document.getElementById("prompt-input");
+      if (pIn) pIn.placeholder = "Ask anything about this document (Chat Only, no document edits)...";
+      showToast("Mode: Chat Only (consultation mode)");
+    }
+    saveSettings(true);
+  }
+  btnModeEdit?.addEventListener("click", () => setAgentMode(true));
+  btnModeChat?.addEventListener("click", () => setAgentMode(false));
+
   document.getElementById("btn-scope-toggle").onclick = () => {
     if (state.documentScope === "selection") {
       setScope("document", "Full Doc");
@@ -343,25 +389,56 @@ function renderWelcomeCard() {
   const cfg = HOST_CONFIG[state.host] || HOST_CONFIG.Word;
   const subEl = document.getElementById("welcome-sub");
   const startersEl = document.getElementById("welcome-starters");
+  const skillsGrid = document.getElementById("skills-pill-grid");
   if (subEl) subEl.textContent = cfg.subtitle;
-  if (!startersEl) return;
 
-  startersEl.innerHTML = cfg.starters
-    .map((s, idx) => `<button type="button" class="starter-btn" data-starter="${idx}">${escapeHtml(s.label)}</button>`)
-    .join("");
+  if (skillsGrid && cfg.skills) {
+    skillsGrid.innerHTML = cfg.skills
+      .map(
+        (s, idx) => `
+        <button type="button" class="skill-pill-btn" data-skill="${idx}" title="${escapeHtml(s.prompt)}">
+          <code>${escapeHtml(s.cmd)}</code>
+          <span>${escapeHtml(s.label.replace(/^[^a-zA-Z0-9]+/, ""))}</span>
+        </button>
+      `
+      )
+      .join("");
 
-  startersEl.querySelectorAll(".starter-btn").forEach((btn) => {
-    const starter = cfg.starters[Number(btn.dataset.starter)];
-    btn.onclick = () => {
-      const inputEl = document.getElementById("prompt-input");
-      inputEl.value = starter.prompt;
-      if (starter.prompt.trim().endsWith(":")) {
-        inputEl.focus();
-      } else {
+    skillsGrid.querySelectorAll(".skill-pill-btn").forEach((btn) => {
+      const sk = cfg.skills[Number(btn.dataset.skill)];
+      btn.onclick = () => {
+        const inputEl = document.getElementById("prompt-input");
+        inputEl.value = sk.prompt;
+        if (sk.prompt.endsWith(" ") || sk.prompt.endsWith(":")) {
+          inputEl.focus();
+        } else {
+          handleSubmit();
+        }
+      };
+    });
+  }
+
+  if (startersEl && cfg.starters) {
+    startersEl.innerHTML = cfg.starters
+      .map(
+        (s, idx) => `
+        <button type="button" class="copilot-chip" data-starter="${idx}">
+          <span>${escapeHtml(s.label)}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+      `
+      )
+      .join("");
+
+    startersEl.querySelectorAll(".copilot-chip").forEach((btn) => {
+      const starter = cfg.starters[Number(btn.dataset.starter)];
+      btn.onclick = () => {
+        const inputEl = document.getElementById("prompt-input");
+        inputEl.value = starter.prompt;
         handleSubmit();
-      }
-    };
-  });
+      };
+    });
+  }
 }
 
 async function checkServerStatus() {
@@ -3884,9 +3961,14 @@ function clearConversation() {
   const container = document.getElementById("chat-container");
   container.innerHTML = `
     <div class="welcome-state" id="welcome-card">
-      <div class="welcome-heading">Office AI Agent</div>
-      <p class="welcome-sub" id="welcome-sub"></p>
-      <div class="welcome-starters" id="welcome-starters"></div>
+      <div class="welcome-header-box">
+        <div class="welcome-heading">⚡ 0x15k Office AI</div>
+        <p class="welcome-sub" id="welcome-sub"></p>
+      </div>
+      <div class="skills-section-title">Get started with these skills:</div>
+      <div class="skills-pill-grid" id="skills-pill-grid"></div>
+      <div class="skills-section-title" style="margin-top:8px;">Quick suggestions:</div>
+      <div class="copilot-chip-list" id="welcome-starters"></div>
     </div>
   `;
   renderWelcomeCard();

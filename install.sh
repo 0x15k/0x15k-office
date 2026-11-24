@@ -103,10 +103,15 @@ sideload_office_apps() {
 
 install_global_cli() {
   local cli_target="$INSTALL_DIR/bin/office-cli.js"
+  local mcp_target="$INSTALL_DIR/bin/office-mcp.js"
   mkdir -p "$HOME/.local/bin"
   chmod +x "$cli_target"
   ln -sf "$cli_target" "$CLI_LINK"
-  log "Global CLI linked at $CLI_LINK -> $cli_target"
+  if [[ -f "$mcp_target" ]]; then
+    chmod +x "$mcp_target"
+    ln -sf "$mcp_target" "$HOME/.local/bin/office-mcp"
+  fi
+  log "Global CLI linked at $CLI_LINK and $HOME/.local/bin/office-mcp"
 }
 
 install_launch_agent() {

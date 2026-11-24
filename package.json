@@ -9,7 +9,8 @@
   },
   "main": "server.js",
   "bin": {
-    "office-ai": "./bin/office-cli.js"
+    "office-ai": "./bin/office-cli.js",
+    "office-mcp": "./bin/office-mcp.js"
   },
   "scripts": {
     "start": "node server.js",
