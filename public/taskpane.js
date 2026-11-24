@@ -141,7 +141,9 @@ function loadSettings() {
     if (saved) {
       state.settings = { ...state.settings, ...JSON.parse(saved) };
     }
-    state.autoApply = state.settings.autoApply !== false;
+    // Default autoApply to true for active execution
+    state.autoApply = true;
+    state.settings.autoApply = true;
   } catch (e) {
     console.warn("Failed to load settings:", e);
   }
@@ -2443,9 +2445,9 @@ async function handleWordChartUpdate(context, op) {
 
       if (isPie) {
         // Transform <c:barChart> into <c:pieChart>
-        xml = xml.replace(/<c:barChart>[\s\S]*?<\/c:barChart>/gi, (barBlock) => {
+        xml = xml.replace(/<c:barChart[^>]*>[\s\S]*?<\/c:barChart>/gi, (barBlock) => {
           let pie = barBlock
-            .replace(/<c:barChart>/gi, "<c:pieChart>")
+            .replace(/<c:barChart[^>]*>/gi, "<c:pieChart>")
             .replace(/<\/c:barChart>/gi, "</c:pieChart>")
             .replace(/<c:barDir[^>]*\/>/gi, "")
             .replace(/<c:grouping[^>]*\/>/gi, "")
@@ -2457,8 +2459,8 @@ async function handleWordChartUpdate(context, op) {
         });
 
         // Strip axes from plotArea for pie charts
-        xml = xml.replace(/<c:catAx>[\s\S]*?<\/c:catAx>/gi, "");
-        xml = xml.replace(/<c:valAx>[\s\S]*?<\/c:valAx>/gi, "");
+        xml = xml.replace(/<c:catAx[^>]*>[\s\S]*?<\/c:catAx>/gi, "");
+        xml = xml.replace(/<c:valAx[^>]*>[\s\S]*?<\/c:valAx>/gi, "");
       }
 
       // Update series data
@@ -2485,14 +2487,27 @@ async function handleWordChartUpdate(context, op) {
         }
       }
 
-      targetParagraph.insertOoxml(xml, Word.InsertLocation.replace);
-      await context.sync();
-      return { applied: 1, detail: op.description || `Updated native Word ${isPie ? "pie" : "bar"} chart` };
+      const xmlModified = xml !== rawOoxml.value && (isPie ? xml.includes("<c:pieChart") : true);
+      if (xmlModified) {
+        targetParagraph.insertOoxml(xml, Word.InsertLocation.replace);
+        await context.sync();
+        return { applied: 1, detail: op.description || `Updated native Word ${isPie ? "pie" : "bar"} chart` };
+      }
     } catch (ooxmlErr) {
       console.warn("Native DrawingML update error, falling back to SVG vector chart:", ooxmlErr.message);
     }
 
-    // Attempt 2: High-Definition Vector SVG fallback (renders natively with 100% fidelity)
+    // Attempt 2: Direct High-Definition Vector SVG Replacement (guaranteed visual change in Word)
+    try {
+      const inlinePics = targetParagraph.inlinePictures;
+      inlinePics.load("items");
+      await context.sync();
+      for (const pic of (inlinePics.items || [])) {
+        try { pic.delete(); } catch (_) {}
+      }
+      await context.sync();
+    } catch (_) {}
+
     const svgHtml = buildCorporateChartSvgHtml({
       chartType: isPie ? "pie" : "bar",
       title: op.title || "Distribución de Vulnerabilidades",
@@ -2502,6 +2517,7 @@ async function handleWordChartUpdate(context, op) {
       ],
       categories: op.categories || ["Media", "Baja"]
     });
+
     targetParagraph.insertHtml(svgHtml, Word.InsertLocation.replace);
     await context.sync();
     return { applied: 1, detail: `Inserted high-definition vector ${isPie ? "pie" : "bar"} chart` };
