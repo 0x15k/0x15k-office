@@ -111,6 +111,17 @@ Colors must NEVER be hardcoded in engine logic. They must be resolved dynamicall
 3. **Tier 3: Contextual Query or Universal Professional Palette**:
    - If neither custom skills nor document context provide a color palette, and the visual distinction is critical, **ask the user** what corporate colors they prefer, or apply standard neutral corporate palettes (`#2563EB`, `#10B981`, `#F59E0B`, `#EF4444`) and mention the color scheme in the chat reply.
 
+### 4.3 Chart Data Labels Hygiene & Professional Typography
+1. **Zero-Clutter Labeling**:
+   - In bar and column charts, the axes already present numeric scales and category ticks. Emitting data labels on every segment (especially zero-value segments) creates severe visual overlaps and makes the exhibit unreadable.
+   - When the user asks to remove labels (*"quita labels"*, *"sin etiquetas"*, *"menos texto"*, *"limpio"*, *"quita tantos labels"*), ALWAYS set `showDataLabels: false`.
+   - By default in bar and column charts, prefer `showDataLabels: false` unless the user explicitly requests data labels.
+   - When data labels are explicitly enabled, the engine formats numbers with `#;;` so zero-value bars remain clean without redundant '0' labels, and sets `<c:showCatName val="0"/>` and `<c:showSerName val="0"/>` so category and series names are never repeated inside bars.
+
+2. **Typography Compliance**:
+   - Always propagate font family and font size (e.g., `fontName: "Aptos"`, `fontSize: 9`) to ensure all chart elements (axes, labels, ticks, legends) inherit clean 9 pt corporate typography.
+   - When the user specifies *"sin título"* or *"que no lleve título"*, set `title: ""` so the chart renders without redundant headers.
+
 ---
 
 ## 5. Expected Operational Steps (Universal Workflow)

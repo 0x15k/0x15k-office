@@ -2453,6 +2453,9 @@ function normalizeChartData(options = {}) {
 function generateNativeChartFlatOpc(options = {}) {
   const chartType = String(options.chartType || options.type || "pie").toLowerCase();
   const title = (options.title || "").trim();
+  const fontName = String(options.fontName || options.fontFamily || "Aptos").trim();
+  const fontSizePt = Number(options.fontSize) || 9;
+  const fontSz = Math.round(fontSizePt * 100);
   const { categories, series } = normalizeChartData(options);
 
   const isPie =
@@ -2465,6 +2468,16 @@ function generateNativeChartFlatOpc(options = {}) {
     !chartType.includes("barra") &&
     !chartType.includes("bar") &&
     !chartType.includes("colum");
+
+  let showDataLabels = false;
+  if (options.showDataLabels === true || options.dataLabels === true || options.showLabels === true) {
+    showDataLabels = true;
+  } else if (options.showDataLabels === false || options.dataLabels === false || options.showLabels === false) {
+    showDataLabels = false;
+  } else {
+    // Default: true for pie/doughnut (percentages are standard), false for bar/column (clean bars, scale on axis)
+    showDataLabels = isPie;
+  }
 
   let plotContent = "";
   let legendBlock = "";
@@ -2491,6 +2504,16 @@ function generateNativeChartFlatOpc(options = {}) {
                   <c:spPr><a:solidFill><a:srgbClr val="${it.color}"/></a:solidFill></c:spPr>
                 </c:dPt>`).join("");
 
+    const pieDLblsBlock = showDataLabels
+      ? `<c:dLbls>
+                <c:showVal val="0"/>
+                <c:showPercent val="1"/>
+                <c:showCatName val="1"/>
+                <c:showSerName val="0"/>
+                <c:showLegendKey val="0"/>
+              </c:dLbls>`
+      : `<c:dLbls><c:delete val="1"/></c:dLbls>`;
+
     plotContent = `
             <c:pieChart>
               <c:varyColors val="1"/>
@@ -2516,19 +2539,28 @@ function generateNativeChartFlatOpc(options = {}) {
                   </c:numRef>
                 </c:val>${dPtBlocks}
               </c:ser>
-              <c:dLbls>
-                <c:showVal val="0"/>
-                <c:showPercent val="1"/>
-                <c:showCatName val="1"/>
-                <c:showSerName val="0"/>
-                <c:showLegendKey val="0"/>
-              </c:dLbls>
+              ${pieDLblsBlock}
             </c:pieChart>`;
 
     legendBlock = `
           <c:legend>
             <c:legendPos val="r"/>
             <c:overlay val="0"/>
+            <c:txPr>
+              <a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="${fontSz}" b="0">
+                    <a:solidFill><a:srgbClr val="1E293B"/></a:solidFill>
+                    <a:latin typeface="${escapeHtml(fontName)}"/>
+                    <a:ea typeface="${escapeHtml(fontName)}"/>
+                    <a:cs typeface="${escapeHtml(fontName)}"/>
+                  </a:defRPr>
+                </a:pPr>
+                <a:endParaRPr lang="es-CL"/>
+              </a:p>
+            </c:txPr>
           </c:legend>`;
   } else {
     const isCol = chartType.includes("col") || chartType.includes("vertic");
@@ -2571,7 +2603,7 @@ function generateNativeChartFlatOpc(options = {}) {
                 <c:val>
                   <c:numRef>
                     <c:numCache>
-                      <c:formatCode>General</c:formatCode>
+                      <c:formatCode>#;;</c:formatCode>
                       <c:ptCount val="${categories.length}"/>
                       ${valPoints}
                     </c:numCache>
@@ -2580,12 +2612,25 @@ function generateNativeChartFlatOpc(options = {}) {
               </c:ser>`;
     }).join("");
 
+    const barDLblsBlock = showDataLabels
+      ? `<c:dLbls>
+                <c:dLblPos val="inBase"/>
+                <c:showLegendKey val="0"/>
+                <c:showVal val="1"/>
+                <c:showCatName val="0"/>
+                <c:showSerName val="0"/>
+                <c:showPercent val="0"/>
+                <c:showBubbleSize val="0"/>
+                <c:showLeaderLines val="0"/>
+              </c:dLbls>`
+      : `<c:dLbls><c:delete val="1"/></c:dLbls>`;
+
     plotContent = `
             <c:barChart>
               <c:barDir val="${isCol ? 'col' : 'bar'}"/>
               <c:grouping val="${isStacked ? 'stacked' : 'clustered'}"/>
               <c:varyColors val="0"/>${seriesBlocks}
-              <c:dLbls><c:showVal val="1"/><c:showPercent val="0"/></c:dLbls>
+              ${barDLblsBlock}
               <c:gapWidth val="150"/>
               <c:overlap val="${isStacked ? '100' : '0'}"/>
               <c:axId val="158996624"/>
@@ -2596,6 +2641,21 @@ function generateNativeChartFlatOpc(options = {}) {
               <c:scaling><c:orientation val="minMax"/></c:scaling>
               <c:delete val="0"/><c:axPos val="${isCol ? 'b' : 'l'}"/>
               <c:tickLblPos val="nextTo"/>
+              <c:txPr>
+                <a:bodyPr rot="-60000000" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+                <a:lstStyle/>
+                <a:p>
+                  <a:pPr>
+                    <a:defRPr sz="${fontSz}" b="0">
+                      <a:solidFill><a:srgbClr val="334155"/></a:solidFill>
+                      <a:latin typeface="${escapeHtml(fontName)}"/>
+                      <a:ea typeface="${escapeHtml(fontName)}"/>
+                      <a:cs typeface="${escapeHtml(fontName)}"/>
+                    </a:defRPr>
+                  </a:pPr>
+                  <a:endParaRPr lang="es-CL"/>
+                </a:p>
+              </c:txPr>
               <c:crossAx val="158999504"/>
               <c:crosses val="autoZero"/>
             </c:catAx>
@@ -2604,6 +2664,21 @@ function generateNativeChartFlatOpc(options = {}) {
               <c:scaling><c:orientation val="minMax"/><c:max val="${maxValRounded}"/></c:scaling>
               <c:delete val="0"/><c:axPos val="${isCol ? 'l' : 'b'}"/>
               <c:majorGridlines/>
+              <c:txPr>
+                <a:bodyPr rot="-60000000" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+                <a:lstStyle/>
+                <a:p>
+                  <a:pPr>
+                    <a:defRPr sz="${fontSz}" b="0">
+                      <a:solidFill><a:srgbClr val="64748B"/></a:solidFill>
+                      <a:latin typeface="${escapeHtml(fontName)}"/>
+                      <a:ea typeface="${escapeHtml(fontName)}"/>
+                      <a:cs typeface="${escapeHtml(fontName)}"/>
+                    </a:defRPr>
+                  </a:pPr>
+                  <a:endParaRPr lang="es-CL"/>
+                </a:p>
+              </c:txPr>
               <c:crossAx val="158996624"/>
               <c:crosses val="autoZero"/>
               <c:crossBetween val="between"/>
@@ -2614,6 +2689,21 @@ function generateNativeChartFlatOpc(options = {}) {
           <c:legend>
             <c:legendPos val="b"/>
             <c:overlay val="0"/>
+            <c:txPr>
+              <a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+              <a:lstStyle/>
+              <a:p>
+                <a:pPr>
+                  <a:defRPr sz="${fontSz}" b="0">
+                    <a:solidFill><a:srgbClr val="1E293B"/></a:solidFill>
+                    <a:latin typeface="${escapeHtml(fontName)}"/>
+                    <a:ea typeface="${escapeHtml(fontName)}"/>
+                    <a:cs typeface="${escapeHtml(fontName)}"/>
+                  </a:defRPr>
+                </a:pPr>
+                <a:endParaRPr lang="es-CL"/>
+              </a:p>
+            </c:txPr>
           </c:legend>`;
   }
 
@@ -2699,6 +2789,21 @@ function generateNativeChartFlatOpc(options = {}) {
           </c:plotArea>${legendBlock}
           <c:plotVisOnly val="1"/>
         </c:chart>
+        <c:txPr>
+          <a:bodyPr/>
+          <a:lstStyle/>
+          <a:p>
+            <a:pPr>
+              <a:defRPr sz="${fontSz}" b="0">
+                <a:solidFill><a:srgbClr val="334155"/></a:solidFill>
+                <a:latin typeface="${escapeHtml(fontName)}"/>
+                <a:ea typeface="${escapeHtml(fontName)}"/>
+                <a:cs typeface="${escapeHtml(fontName)}"/>
+              </a:defRPr>
+            </a:pPr>
+            <a:endParaRPr lang="es-CL"/>
+          </a:p>
+        </c:txPr>
       </c:chartSpace>
     </pkg:xmlData>
   </pkg:part>
@@ -2709,6 +2814,25 @@ function generateCorporateChartBase64(options = {}) {
   const chartType = String(options.chartType || options.type || "pie").toLowerCase();
   const title = (options.title || "").trim();
   const { categories, series } = normalizeChartData(options);
+  const isPie =
+    (chartType.includes("pie") ||
+    chartType.includes("circular") ||
+    chartType.includes("torta") ||
+    chartType.includes("pastel") ||
+    chartType.includes("doughnut") ||
+    chartType.includes("anillo")) &&
+    !chartType.includes("barra") &&
+    !chartType.includes("bar") &&
+    !chartType.includes("colum");
+
+  let showDataLabels = false;
+  if (options.showDataLabels === true || options.dataLabels === true || options.showLabels === true) {
+    showDataLabels = true;
+  } else if (options.showDataLabels === false || options.dataLabels === false || options.showLabels === false) {
+    showDataLabels = false;
+  } else {
+    showDataLabels = isPie;
+  }
 
   const canvas = document.createElement("canvas");
   const W = 1100;
@@ -2745,7 +2869,6 @@ function generateCorporateChartBase64(options = {}) {
   }
 
   const isDoughnut = chartType.includes("doughnut") || chartType.includes("anillo");
-  const isPie = chartType.includes("pie") || chartType.includes("circular") || chartType.includes("torta") || chartType.includes("pastel") || isDoughnut;
 
   if (isPie) {
     const firstSer = series[0] || { name: "Series 1", values: [] };
@@ -2899,14 +3022,16 @@ function generateCorporateChartBase64(options = {}) {
           ctx.fillStyle = color;
           ctx.fill();
 
-          ctx.fillStyle = "#FFFFFF";
-          ctx.font = "bold 14px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-          ctx.textAlign = "center";
-          if (barW > 30) {
-            ctx.fillText(String(val), startX + barW - 14, yPos + (barHeight - 4) / 2);
-          } else {
-            ctx.fillStyle = "#1E293B";
-            ctx.fillText(String(val), startX + barW + 12, yPos + (barHeight - 4) / 2);
+          if (showDataLabels) {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.font = "bold 14px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+            ctx.textAlign = "center";
+            if (barW > 30) {
+              ctx.fillText(String(val), startX + barW - 14, yPos + (barHeight - 4) / 2);
+            } else {
+              ctx.fillStyle = "#1E293B";
+              ctx.fillText(String(val), startX + barW + 12, yPos + (barHeight - 4) / 2);
+            }
           }
         }
       }
@@ -3114,7 +3239,10 @@ async function handleWordChartUpdate(context, op) {
         categories: op.categories,
         data: op.data,
         values: op.values,
-        colors: op.colors
+        colors: op.colors,
+        showDataLabels: op.showDataLabels !== undefined ? op.showDataLabels : (op.dataLabels !== undefined ? op.dataLabels : op.showLabels),
+        fontName: op.fontName || op.fontFamily,
+        fontSize: op.fontSize
       });
 
       targetParagraph.insertOoxml(flatOpc, Word.InsertLocation.replace);
@@ -3134,6 +3262,9 @@ async function handleWordChartUpdate(context, op) {
         data: op.data,
         values: op.values,
         colors: op.colors,
+        showDataLabels: op.showDataLabels !== undefined ? op.showDataLabels : (op.dataLabels !== undefined ? op.dataLabels : op.showLabels),
+        fontName: op.fontName || op.fontFamily,
+        fontSize: op.fontSize,
         subtitle: op.subtitle || op.summary || ""
       });
 

@@ -348,7 +348,7 @@ function getHostOperationsSchema(host) {
     '- delete_text: {"type":"delete_text","target":"<exact text>","description":"..."}\n' +
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
-    '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"colors":{"CategoryOrSeries":"#HEX"},"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories, numeric series values, and custom colors.\n' +
+    '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","showDataLabels":false,"fontName":"Aptos","fontSize":9,"categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"colors":{"CategoryOrSeries":"#HEX"},"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories, numeric series values, custom colors, data label toggle, and font styling.\n' +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
@@ -395,8 +395,12 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
         "  5. VISUAL EXHIBIT SEMANTICS & METRIC DIMENSION: In executive summaries or status reports, always align the chart metric with the document's primary business question:\n" +
         "     - In Recertification / Audit reports, the executive metric is remediation status (e.g. 100% Mitigado vs 0% Vulnerable). Slicing a pie chart by severity when all findings are mitigated misleads stakeholders into thinking vulnerabilities remain active! If showing severities in a recertification, explicitly reflect mitigation (e.g. 'Media (Mitigada)' #FFC000, 'Baja (Mitigada)' #4EA72E) or chart status breakdown ('MITIGADO' 100% #92D050, 'VULNERABLE' 0% #FF0000).\n" +
         "     - Never invent hardcoded domain logic: derive categories, series, and values strictly from the governing summary table and active skills.\n" +
-        "  6. If [SELECTED_CONTEXT] indicates a chart is selected ([SELECTED_CHART: ...]), set `\"target\": \"\"` to update the selected chart directly.\n" +
-        "  7. NEVER say in your text reply that you changed or updated the chart without actually appending the update_chart operation in the exact same turn!\n"
+        "  6. CHART LABELS, TYPOGRAPHY & TITLE HYGIENE:\n" +
+        "     - When the user asks to remove or clean labels ('quita labels', 'sin etiquetas', 'menos texto', 'limpio', 'quita tantos labels'), set `showDataLabels: false`. In bar and column charts, ALWAYS default `showDataLabels: false` so bars remain crisp without overlapping numbers (the axis scale already shows quantities).\n" +
+        "     - When the user requests a specific font or size (e.g. 'sea aptos de número 9', 'letra aptos 9', 'fuente 9'), set `fontName: \"Aptos\"` and `fontSize: 9`.\n" +
+        "     - When the user asks for no title ('que no lleve título', 'sin encabezado', 'sin título'), set `title: \"\"`.\n" +
+        "  7. If [SELECTED_CONTEXT] indicates a chart is selected ([SELECTED_CHART: ...]), set `\"target\": \"\"` to update the selected chart directly.\n" +
+        "  8. NEVER say in your text reply that you changed or updated the chart without actually appending the update_chart operation in the exact same turn!\n"
       : "";
 
   const excelRules =
