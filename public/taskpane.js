@@ -2321,9 +2321,110 @@ function drawCanvasRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+const UNIVERSAL_CHART_PALETTE = [
+  "2563EB", // Royal Blue
+  "10B981", // Emerald Green
+  "F59E0B", // Amber Gold
+  "EF4444", // Crimson Red
+  "8B5CF6", // Purple
+  "06B6D4", // Cyan
+  "EC4899", // Pink
+  "64748B", // Slate
+  "14B8A6", // Teal
+  "F97316"  // Orange
+];
+
+function getDynamicChartColor(name, index) {
+  const norm = String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (norm.includes("crit") || norm.includes("vulnerab") || norm.includes("fail") || norm.includes("error") || norm.includes("danger") || norm.includes("red")) {
+    return "C00000";
+  }
+  if (norm.includes("alt") || norm.includes("high") || norm.includes("warn")) {
+    return "ED7D31";
+  }
+  if (norm.includes("med") || norm.includes("amber") || norm.includes("yellow")) {
+    return "FFC000";
+  }
+  if (norm.includes("baj") || norm.includes("low") || norm.includes("mitig") || norm.includes("pass") || norm.includes("ok") || norm.includes("green") || norm.includes("succ")) {
+    return "548235";
+  }
+  if (norm.includes("info") || norm.includes("blue")) {
+    return "4472C4";
+  }
+  return UNIVERSAL_CHART_PALETTE[index % UNIVERSAL_CHART_PALETTE.length];
+}
+
+function normalizeChartData(options = {}) {
+  let categories = Array.isArray(options.categories) ? options.categories.map(c => String(c).trim()) : [];
+  let rawSeries = Array.isArray(options.series) ? options.series : [];
+
+  // If no series provided but flat data array or values object exists
+  if (rawSeries.length === 0) {
+    if (Array.isArray(options.data)) {
+      rawSeries = [{ name: options.title || "Series 1", values: options.data }];
+    } else if (options.values && typeof options.values === "object") {
+      rawSeries = [{ name: options.title || "Series 1", values: options.values }];
+    }
+  }
+
+  // Discover categories if not explicitly passed
+  if (categories.length === 0) {
+    const discovered = new Set();
+    for (const s of rawSeries) {
+      if (s && s.values && typeof s.values === "object" && !Array.isArray(s.values)) {
+        for (const k of Object.keys(s.values)) {
+          if (k.trim()) discovered.add(k.trim());
+        }
+      }
+    }
+    if (discovered.size > 0) {
+      categories = Array.from(discovered);
+    }
+  }
+
+  // Normalize each series to { name: string, values: number[] }
+  const normalizedSeries = [];
+  for (let i = 0; i < rawSeries.length; i++) {
+    const s = rawSeries[i] || {};
+    const sName = String(s.name || `Series ${i + 1}`).trim();
+    let valArr = [];
+
+    if (Array.isArray(s.values)) {
+      valArr = s.values.map(v => Number(v) || 0);
+      if (categories.length === 0) {
+        categories = valArr.map((_, idx) => `Item ${idx + 1}`);
+      }
+    } else if (s.values && typeof s.values === "object") {
+      valArr = categories.map(cat => Number(s.values[cat]) || 0);
+    } else {
+      valArr = categories.map(() => 0);
+    }
+
+    normalizedSeries.push({
+      name: sName,
+      values: valArr
+    });
+  }
+
+  // Fallback if completely empty
+  if (categories.length === 0) {
+    categories = ["Cat 1", "Cat 2"];
+  }
+  if (normalizedSeries.length === 0) {
+    normalizedSeries.push({
+      name: options.title || "Series 1",
+      values: categories.map(() => 1)
+    });
+  }
+
+  return { categories, series: normalizedSeries };
+}
+
 function generateNativeChartFlatOpc(options = {}) {
   const chartType = String(options.chartType || options.type || "pie").toLowerCase();
-  const title = options.title || "Distribución de Severidad de Vulnerabilidades";
+  const title = (options.title || "").trim();
+  const { categories, series } = normalizeChartData(options);
+
   const isPie =
     (chartType.includes("pie") ||
     chartType.includes("circular") ||
@@ -2339,21 +2440,26 @@ function generateNativeChartFlatOpc(options = {}) {
   let legendBlock = "";
 
   if (isPie) {
-    let mediaVal = 1;
-    let bajaVal = 1;
-    if (Array.isArray(options.series)) {
-      for (const ser of options.series) {
-        const vals = ser.values || {};
-        if (typeof vals === "object" && !Array.isArray(vals)) {
-          for (const [k, v] of Object.entries(vals)) {
-            const num = Number(v) || 0;
-            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            if (kNorm.includes("MED")) mediaVal = num;
-            else if (kNorm.includes("BAJ")) bajaVal = num;
-          }
-        }
-      }
-    }
+    const firstSer = series[0] || { name: title || "Series", values: [] };
+    const items = categories.map((cat, idx) => ({
+      cat,
+      val: firstSer.values[idx] || 0,
+      color: getDynamicChartColor(cat, idx)
+    })).filter(it => it.val > 0);
+
+    const renderItems = items.length > 0 ? items : categories.map((cat, idx) => ({
+      cat,
+      val: firstSer.values[idx] || 1,
+      color: getDynamicChartColor(cat, idx)
+    }));
+
+    const catPoints = renderItems.map((it, idx) => `<c:pt idx="${idx}"><c:v>${escapeHtml(it.cat)}</c:v></c:pt>`).join("\n                      ");
+    const valPoints = renderItems.map((it, idx) => `<c:pt idx="${idx}"><c:v>${it.val}</c:v></c:pt>`).join("\n                      ");
+    const dPtBlocks = renderItems.map((it, idx) => `
+                <c:dPt>
+                  <c:idx val="${idx}"/>
+                  <c:spPr><a:solidFill><a:srgbClr val="${it.color}"/></a:solidFill></c:spPr>
+                </c:dPt>`).join("");
 
     plotContent = `
             <c:pieChart>
@@ -2361,13 +2467,12 @@ function generateNativeChartFlatOpc(options = {}) {
               <c:ser>
                 <c:idx val="0"/>
                 <c:order val="0"/>
-                <c:tx><c:v>${escapeHtml(title)}</c:v></c:tx>
+                <c:tx><c:v>${escapeHtml(title || firstSer.name)}</c:v></c:tx>
                 <c:cat>
                   <c:strRef>
                     <c:strCache>
-                      <c:ptCount val="2"/>
-                      <c:pt idx="0"><c:v>Media (MITIGADO)</c:v></c:pt>
-                      <c:pt idx="1"><c:v>Baja (MITIGADO)</c:v></c:pt>
+                      <c:ptCount val="${renderItems.length}"/>
+                      ${catPoints}
                     </c:strCache>
                   </c:strRef>
                 </c:cat>
@@ -2375,20 +2480,11 @@ function generateNativeChartFlatOpc(options = {}) {
                   <c:numRef>
                     <c:numCache>
                       <c:formatCode>General</c:formatCode>
-                      <c:ptCount val="2"/>
-                      <c:pt idx="0"><c:v>${mediaVal}</c:v></c:pt>
-                      <c:pt idx="1"><c:v>${bajaVal}</c:v></c:pt>
+                      <c:ptCount val="${renderItems.length}"/>
+                      ${valPoints}
                     </c:numCache>
                   </c:numRef>
-                </c:val>
-                <c:dPt>
-                  <c:idx val="0"/>
-                  <c:spPr><a:solidFill><a:srgbClr val="FFC000"/></a:solidFill></c:spPr>
-                </c:dPt>
-                <c:dPt>
-                  <c:idx val="1"/>
-                  <c:spPr><a:solidFill><a:srgbClr val="548235"/></a:solidFill></c:spPr>
-                </c:dPt>
+                </c:val>${dPtBlocks}
               </c:ser>
               <c:dLbls>
                 <c:showVal val="1"/>
@@ -2404,115 +2500,83 @@ function generateNativeChartFlatOpc(options = {}) {
             <c:overlay val="0"/>
           </c:legend>`;
   } else {
-    let mediaVal = 1;
-    let bajaVal = 1;
-    if (Array.isArray(options.series)) {
-      for (const ser of options.series) {
-        const sName = (ser.name || "").toUpperCase();
-        const vals = ser.values || {};
-        if (typeof vals === "object" && !Array.isArray(vals)) {
-          for (const [k, v] of Object.entries(vals)) {
-            const num = Number(v) || 0;
-            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            if (sName.includes("MITIGADO")) {
-              if (kNorm.includes("MED")) mediaVal = num;
-              else if (kNorm.includes("BAJ")) bajaVal = num;
-            }
-          }
+    const isCol = chartType.includes("col") || chartType.includes("vertic");
+    const isStacked = chartType.includes("stack") || (series.length > 1 && !chartType.includes("cluster"));
+
+    let maxVal = 1;
+    if (isStacked) {
+      for (let cIdx = 0; cIdx < categories.length; cIdx++) {
+        const sum = series.reduce((acc, s) => acc + (s.values[cIdx] || 0), 0);
+        if (sum > maxVal) maxVal = sum;
+      }
+    } else {
+      for (const s of series) {
+        for (const v of s.values) {
+          if (v > maxVal) maxVal = v;
         }
       }
     }
+    const maxValRounded = Math.ceil(maxVal * 1.15) || 2;
+
+    const seriesBlocks = series.map((ser, serIdx) => {
+      const serColor = getDynamicChartColor(ser.name, serIdx);
+      const catPoints = categories.map((cat, cIdx) => `<c:pt idx="${cIdx}"><c:v>${escapeHtml(cat)}</c:v></c:pt>`).join("\n                      ");
+      const valPoints = categories.map((_, cIdx) => `<c:pt idx="${cIdx}"><c:v>${ser.values[cIdx] || 0}</c:v></c:pt>`).join("\n                      ");
+
+      return `
+              <c:ser>
+                <c:idx val="${serIdx}"/>
+                <c:order val="${serIdx}"/>
+                <c:tx><c:v>${escapeHtml(ser.name)}</c:v></c:tx>
+                <c:spPr><a:solidFill><a:srgbClr val="${serColor}"/></a:solidFill></c:spPr>
+                <c:cat>
+                  <c:strRef>
+                    <c:strCache>
+                      <c:ptCount val="${categories.length}"/>
+                      ${catPoints}
+                    </c:strCache>
+                  </c:strRef>
+                </c:cat>
+                <c:val>
+                  <c:numRef>
+                    <c:numCache>
+                      <c:formatCode>General</c:formatCode>
+                      <c:ptCount val="${categories.length}"/>
+                      ${valPoints}
+                    </c:numCache>
+                  </c:numRef>
+                </c:val>
+              </c:ser>`;
+    }).join("");
 
     plotContent = `
             <c:barChart>
-              <c:barDir val="bar"/>
-              <c:grouping val="stacked"/>
-              <c:varyColors val="0"/>
-              <c:ser>
-                <c:idx val="0"/>
-                <c:order val="0"/>
-                <c:tx><c:v>MITIGADO</c:v></c:tx>
-                <c:spPr><a:solidFill><a:srgbClr val="548235"/></a:solidFill></c:spPr>
-                <c:cat>
-                  <c:strRef>
-                    <c:strCache>
-                      <c:ptCount val="5"/>
-                      <c:pt idx="0"><c:v>INFORMATIVA</c:v></c:pt>
-                      <c:pt idx="1"><c:v>BAJA</c:v></c:pt>
-                      <c:pt idx="2"><c:v>MEDIA</c:v></c:pt>
-                      <c:pt idx="3"><c:v>ALTA</c:v></c:pt>
-                      <c:pt idx="4"><c:v>CRÍTICA</c:v></c:pt>
-                    </c:strCache>
-                  </c:strRef>
-                </c:cat>
-                <c:val>
-                  <c:numRef>
-                    <c:numCache>
-                      <c:formatCode>General</c:formatCode>
-                      <c:ptCount val="5"/>
-                      <c:pt idx="0"><c:v>0</c:v></c:pt>
-                      <c:pt idx="1"><c:v>${bajaVal}</c:v></c:pt>
-                      <c:pt idx="2"><c:v>${mediaVal}</c:v></c:pt>
-                      <c:pt idx="3"><c:v>0</c:v></c:pt>
-                      <c:pt idx="4"><c:v>0</c:v></c:pt>
-                    </c:numCache>
-                  </c:numRef>
-                </c:val>
-              </c:ser>
-              <c:ser>
-                <c:idx val="1"/>
-                <c:order val="1"/>
-                <c:tx><c:v>VULNERABLE</c:v></c:tx>
-                <c:spPr><a:solidFill><a:srgbClr val="C00000"/></a:solidFill></c:spPr>
-                <c:cat>
-                  <c:strRef>
-                    <c:strCache>
-                      <c:ptCount val="5"/>
-                      <c:pt idx="0"><c:v>INFORMATIVA</c:v></c:pt>
-                      <c:pt idx="1"><c:v>BAJA</c:v></c:pt>
-                      <c:pt idx="2"><c:v>MEDIA</c:v></c:pt>
-                      <c:pt idx="3"><c:v>ALTA</c:v></c:pt>
-                      <c:pt idx="4"><c:v>CRÍTICA</c:v></c:pt>
-                    </c:strCache>
-                  </c:strRef>
-                </c:cat>
-                <c:val>
-                  <c:numRef>
-                    <c:numCache>
-                      <c:formatCode>General</c:formatCode>
-                      <c:ptCount val="5"/>
-                      <c:pt idx="0"><c:v>0</c:v></c:pt>
-                      <c:pt idx="1"><c:v>0</c:v></c:pt>
-                      <c:pt idx="2"><c:v>0</c:v></c:pt>
-                      <c:pt idx="3"><c:v>0</c:v></c:pt>
-                      <c:pt idx="4"><c:v>0</c:v></c:pt>
-                    </c:numCache>
-                  </c:numRef>
-                </c:val>
-              </c:ser>
+              <c:barDir val="${isCol ? 'col' : 'bar'}"/>
+              <c:grouping val="${isStacked ? 'stacked' : 'clustered'}"/>
+              <c:varyColors val="0"/>${seriesBlocks}
               <c:dLbls><c:showVal val="1"/><c:showPercent val="0"/></c:dLbls>
               <c:gapWidth val="150"/>
-              <c:overlap val="100"/>
+              <c:overlap val="${isStacked ? '100' : '0'}"/>
               <c:axId val="158996624"/>
               <c:axId val="158999504"/>
             </c:barChart>
             <c:catAx>
               <c:axId val="158996624"/>
               <c:scaling><c:orientation val="minMax"/></c:scaling>
-              <c:delete val="0"/><c:axPos val="l"/>
+              <c:delete val="0"/><c:axPos val="${isCol ? 'b' : 'l'}"/>
               <c:tickLblPos val="nextTo"/>
               <c:crossAx val="158999504"/>
               <c:crosses val="autoZero"/>
             </c:catAx>
             <c:valAx>
               <c:axId val="158999504"/>
-              <c:scaling><c:orientation val="minMax"/><c:max val="2"/></c:scaling>
-              <c:delete val="0"/><c:axPos val="b"/>
+              <c:scaling><c:orientation val="minMax"/><c:max val="${maxValRounded}"/></c:scaling>
+              <c:delete val="0"/><c:axPos val="${isCol ? 'l' : 'b'}"/>
               <c:majorGridlines/>
               <c:crossAx val="158996624"/>
               <c:crosses val="autoZero"/>
               <c:crossBetween val="between"/>
-              <c:majorUnit val="1"/>
+              <c:majorUnit val="${Math.max(1, Math.round(maxValRounded / 4))}"/>
             </c:valAx>`;
 
     legendBlock = `
@@ -2521,6 +2585,24 @@ function generateNativeChartFlatOpc(options = {}) {
             <c:overlay val="0"/>
           </c:legend>`;
   }
+
+  const titleBlock = title ? `
+          <c:title>
+            <c:tx>
+              <c:rich>
+                <a:bodyPr/>
+                <a:lstStyle/>
+                <a:p>
+                  <a:r>
+                    <a:rPr b="1" sz="1200"/>
+                    <a:t>${escapeHtml(title)}</a:t>
+                  </a:r>
+                </a:p>
+              </c:rich>
+            </c:tx>
+            <c:layout/>
+          </c:title>` : `
+          <c:autoTitleDeleted val="1"/>`;
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <?mso-application progid="Word.Document"?>
@@ -2580,27 +2662,10 @@ function generateNativeChartFlatOpc(options = {}) {
         <c:date1904 val="0"/>
         <c:lang val="es-CL"/>
         <c:roundedCorners val="0"/>
-        <c:chart>
-          <c:title>
-            <c:tx>
-              <c:rich>
-                <a:bodyPr/>
-                <a:lstStyle/>
-                <a:p>
-                  <a:r>
-                    <a:rPr b="1" sz="1200"/>
-                    <a:t>${escapeHtml(title)}</a:t>
-                  </a:r>
-                </a:p>
-              </c:rich>
-            </c:tx>
-            <c:layout/>
-          </c:title>
+        <c:chart>${titleBlock}
           <c:plotArea>
-            <c:layout/>
-            ${plotContent}
-          </c:plotArea>
-          ${legendBlock}
+            <c:layout/>${plotContent}
+          </c:plotArea>${legendBlock}
           <c:plotVisOnly val="1"/>
         </c:chart>
       </c:chartSpace>
@@ -2611,65 +2676,8 @@ function generateNativeChartFlatOpc(options = {}) {
 
 function generateCorporateChartBase64(options = {}) {
   const chartType = String(options.chartType || options.type || "pie").toLowerCase();
-  const title = options.title || "Distribución de Vulnerabilidades";
-
-  const colorPalette = {
-    critica: "#501549",
-    alta: "#EF4444",
-    media: "#F59E0B",
-    baja: "#10B981",
-    informativa: "#3B82F6",
-    mitigado: "#10B981",
-    vulnerable: "#EF4444"
-  };
-
-  const items = [];
-  if (Array.isArray(options.series)) {
-    for (const ser of options.series) {
-      const serName = (ser.name || "").trim();
-      const vals = ser.values || {};
-      if (typeof vals === "object" && !Array.isArray(vals)) {
-        for (const [cat, count] of Object.entries(vals)) {
-          const num = Number(count) || 0;
-          if (num > 0) {
-            const catLower = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            let color = colorPalette[catLower];
-            if (!color) {
-              if (catLower.includes("crit")) color = "#501549";
-              else if (catLower.includes("alt")) color = "#EF4444";
-              else if (catLower.includes("med")) color = "#F59E0B";
-              else if (catLower.includes("baj")) color = "#10B981";
-              else color = serName.toLowerCase().includes("mitigado") ? "#10B981" : "#F59E0B";
-            }
-            items.push({
-              label: `${cat} (${serName})`,
-              val: num,
-              color: color
-            });
-          }
-        }
-      } else if (Array.isArray(vals)) {
-        vals.forEach((v, idx) => {
-          const num = Number(v) || 0;
-          if (num > 0) {
-            const cat = (options.categories && options.categories[idx]) || `Item ${idx + 1}`;
-            const catLower = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            let color = colorPalette[catLower] || (serName.toLowerCase().includes("mitigado") ? "#10B981" : "#EF4444");
-            items.push({
-              label: `${cat} (${serName})`,
-              val: num,
-              color: color
-            });
-          }
-        });
-      }
-    }
-  }
-
-  if (items.length === 0) {
-    items.push({ label: "Media (MITIGADO)", val: 1, color: "#F59E0B" });
-    items.push({ label: "Baja (MITIGADO)", val: 1, color: "#10B981" });
-  }
+  const title = (options.title || "").trim();
+  const { categories, series } = normalizeChartData(options);
 
   const canvas = document.createElement("canvas");
   const W = 1100;
@@ -2688,37 +2696,57 @@ function generateCorporateChartBase64(options = {}) {
   ctx.stroke();
 
   // 2. Title & Header Divider
-  ctx.fillStyle = "#0F172A";
-  ctx.font = "bold 30px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(title, W / 2, 54);
+  let topY = 40;
+  if (title) {
+    ctx.fillStyle = "#0F172A";
+    ctx.font = "bold 28px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(title, W / 2, 54);
 
-  ctx.strokeStyle = "#F1F5F9";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(40, 94);
-  ctx.lineTo(W - 40, 94);
-  ctx.stroke();
+    ctx.strokeStyle = "#F1F5F9";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(40, 94);
+    ctx.lineTo(W - 40, 94);
+    ctx.stroke();
+    topY = 110;
+  }
 
   const isDoughnut = chartType.includes("doughnut") || chartType.includes("anillo");
   const isPie = chartType.includes("pie") || chartType.includes("circular") || chartType.includes("torta") || chartType.includes("pastel") || isDoughnut;
-  const total = items.reduce((s, it) => s + it.val, 0) || 1;
 
   if (isPie) {
-    // 3. Draw Donut / Pie
+    const firstSer = series[0] || { name: "Series 1", values: [] };
+    const items = categories.map((cat, idx) => ({
+      label: cat,
+      val: firstSer.values[idx] || 0,
+      color: "#" + getDynamicChartColor(cat, idx)
+    })).filter(it => it.val > 0);
+
+    const renderItems = items.length > 0 ? items : categories.map((cat, idx) => ({
+      label: cat,
+      val: firstSer.values[idx] || 1,
+      color: "#" + getDynamicChartColor(cat, idx)
+    }));
+
+    const total = renderItems.reduce((s, it) => s + it.val, 0) || 1;
     const cx = 340;
-    const cy = 310;
-    const R = 170;
-    const r = isDoughnut ? 80 : 0;
+    const cy = topY + 190;
+    const R = 160;
+    const r = isDoughnut ? 75 : 0;
 
     let currentAngle = -Math.PI / 2;
+    for (const it of renderItems) {
+      const fraction = it.val / total;
+      if (fraction <= 0) continue;
+      const sliceAngle = fraction * 2 * Math.PI;
+      const endAngle = currentAngle + sliceAngle;
 
-    if (items.length === 1) {
-      const it = items[0];
       ctx.beginPath();
-      ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      if (r > 0) ctx.arc(cx, cy, r, Math.PI * 2, 0, true);
+      ctx.arc(cx, cy, R, currentAngle, endAngle, false);
+      if (r > 0) ctx.arc(cx, cy, r, endAngle, currentAngle, true);
+      else ctx.lineTo(cx, cy);
       ctx.closePath();
       ctx.fillStyle = it.color;
       ctx.fill();
@@ -2726,70 +2754,41 @@ function generateCorporateChartBase64(options = {}) {
       ctx.lineWidth = 4;
       ctx.stroke();
 
+      // Label on slice
+      const midAngle = currentAngle + sliceAngle / 2;
+      const labelR = r > 0 ? (R + r) / 2 : R * 0.65;
+      const lx = cx + labelR * Math.cos(midAngle);
+      const ly = cy + labelR * Math.sin(midAngle);
+      const pct = Math.round(fraction * 100);
+
       ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 24px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const lr = r > 0 ? (R + r) / 2 : R * 0.6;
-      ctx.fillText(`100% (${it.val})`, cx + lr, cy);
-    } else {
-      for (const it of items) {
-        const fraction = it.val / total;
-        if (fraction <= 0) continue;
-        const sliceAngle = fraction * 2 * Math.PI;
-        const endAngle = currentAngle + sliceAngle;
+      ctx.fillText(`${pct}%`, lx, ly);
 
-        ctx.beginPath();
-        ctx.arc(cx, cy, R, currentAngle, endAngle, false);
-        if (r > 0) {
-          ctx.arc(cx, cy, r, endAngle, currentAngle, true);
-        } else {
-          ctx.lineTo(cx, cy);
-        }
-        ctx.closePath();
-        ctx.fillStyle = it.color;
-        ctx.fill();
-        ctx.strokeStyle = "#FFFFFF";
-        ctx.lineWidth = 4;
-        ctx.stroke();
-
-        // Label on slice
-        const midAngle = currentAngle + sliceAngle / 2;
-        const labelR = r > 0 ? (R + r) / 2 : R * 0.65;
-        const lx = cx + labelR * Math.cos(midAngle);
-        const ly = cy + labelR * Math.sin(midAngle);
-        const pct = Math.round(fraction * 100);
-
-        ctx.fillStyle = "#FFFFFF";
-        ctx.font = "bold 22px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(`${pct}% (${it.val})`, lx, ly);
-
-        currentAngle = endAngle;
-      }
+      currentAngle = endAngle;
     }
 
     if (r > 0) {
       ctx.fillStyle = "#0F172A";
-      ctx.font = "bold 36px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 34px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(total), cx, cy - 8);
 
       ctx.fillStyle = "#64748B";
-      ctx.font = "bold 15px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 14px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.fillText("TOTAL", cx, cy + 22);
     }
 
-    // 4. Legend on Right
-    const legendX = 660;
-    let legendY = 195;
-
-    for (const it of items) {
+    // Legend on Right
+    const legendX = 640;
+    let legendY = topY + 40;
+    for (const it of renderItems) {
       const pct = Math.round((it.val / total) * 100);
 
-      drawCanvasRoundedRect(ctx, legendX, legendY - 14, 26, 26, 6);
+      drawCanvasRoundedRect(ctx, legendX, legendY - 14, 24, 24, 6);
       ctx.fillStyle = it.color;
       ctx.fill();
       ctx.strokeStyle = "rgba(0,0,0,0.1)";
@@ -2797,138 +2796,119 @@ function generateCorporateChartBase64(options = {}) {
       ctx.stroke();
 
       ctx.fillStyle = "#1E293B";
-      ctx.font = "bold 22px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText(it.label, legendX + 40, legendY - 2);
+      ctx.fillText(it.label, legendX + 36, legendY - 2);
 
       ctx.fillStyle = "#64748B";
-      ctx.font = "500 18px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-      ctx.fillText(`Cantidad: ${it.val} (${pct}%)`, legendX + 40, legendY + 26);
+      ctx.font = "500 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.fillText(`${it.val} (${pct}%)`, legendX + 36, legendY + 22);
 
-      legendY += 76;
+      legendY += 64;
     }
-
-    // 5. Executive summary footer bar
-    const barY = 492;
-    drawCanvasRoundedRect(ctx, 40, barY, W - 80, 44, 8);
-    ctx.fillStyle = "#F0FDF4";
-    ctx.fill();
-    ctx.strokeStyle = "#BBF7D0";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.fillStyle = "#166534";
-    ctx.font = "600 17px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("✔ 100% de vulnerabilidades mitigadas tras medidas correctivas (2 de 2 evaluadas)", W / 2, barY + 22);
   } else {
-    // Executive Severity Distribution Horizontal Bar Chart
-    const categories = ["CRÍTICA", "ALTA", "MEDIA", "BAJA", "INFORMATIVA"];
-    const catData = {
-      "CRÍTICA": { val: 0, color: "#501549" },
-      "ALTA": { val: 0, color: "#EF4444" },
-      "MEDIA": { val: 1, color: "#548235" },
-      "BAJA": { val: 1, color: "#548235" },
-      "INFORMATIVA": { val: 0, color: "#3B82F6" }
-    };
-
-    if (Array.isArray(options.series)) {
-      for (const ser of options.series) {
-        const sName = (ser.name || "").toUpperCase();
-        const vals = ser.values || {};
-        if (typeof vals === "object" && !Array.isArray(vals)) {
-          for (const [k, v] of Object.entries(vals)) {
-            const num = Number(v) || 0;
-            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            for (const cat of categories) {
-              const catNorm = cat.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-              if (kNorm.includes(catNorm)) {
-                catData[cat].val = num;
-                if (sName.includes("MITIGADO")) catData[cat].color = "#548235";
-                else if (num > 0) catData[cat].color = "#C00000";
-              }
-            }
-          }
-        }
+    // Horizontal Bar or Column
+    let maxVal = 1;
+    for (const s of series) {
+      for (const v of s.values) {
+        if (v > maxVal) maxVal = v;
       }
     }
+    const maxValRounded = Math.ceil(maxVal * 1.15) || 2;
 
-    const startX = 250;
-    let startY = 130;
-    const barHeight = 26;
-    const barSpacing = 52;
-    const maxVal = 2;
-    const barAreaWidth = 640;
+    const startX = 240;
+    let startY = topY + 30;
+    const barHeight = Math.max(18, Math.min(32, Math.floor(260 / (categories.length * series.length || 1))));
+    const groupSpacing = barHeight * series.length + 22;
+    const barAreaWidth = 720;
 
     // Grid lines and scale ticks
     ctx.strokeStyle = "#E2E8F0";
     ctx.lineWidth = 1;
-    ctx.font = "500 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.font = "500 15px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
     ctx.fillStyle = "#64748B";
     ctx.textAlign = "center";
 
-    for (let tick = 0; tick <= maxVal; tick++) {
-      const tickX = startX + (tick / maxVal) * barAreaWidth;
+    const ticksCount = 4;
+    for (let t = 0; t <= ticksCount; t++) {
+      const tickVal = Math.round((t / ticksCount) * maxValRounded * 10) / 10;
+      const tickX = startX + (t / ticksCount) * barAreaWidth;
       ctx.beginPath();
-      ctx.moveTo(tickX, 115);
-      ctx.lineTo(tickX, 115 + categories.length * barSpacing + 6);
+      ctx.moveTo(tickX, topY + 15);
+      ctx.lineTo(tickX, startY + categories.length * groupSpacing);
       ctx.stroke();
-      ctx.fillText(String(tick), tickX, 115 + categories.length * barSpacing + 28);
+      ctx.fillText(String(tickVal), tickX, startY + categories.length * groupSpacing + 22);
     }
 
-    for (const cat of categories) {
-      const d = catData[cat];
+    for (let cIdx = 0; cIdx < categories.length; cIdx++) {
+      const cat = categories[cIdx];
 
-      // Y-axis label
+      // Y-axis category label
       ctx.fillStyle = "#1E293B";
-      ctx.font = "bold 18px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(cat, startX - 22, startY + barHeight / 2);
+      ctx.fillText(cat, startX - 18, startY + (series.length * barHeight) / 2);
 
-      // Background track
-      drawCanvasRoundedRect(ctx, startX, startY, barAreaWidth, barHeight, 4);
-      ctx.fillStyle = "#F8FAFC";
-      ctx.fill();
+      for (let sIdx = 0; sIdx < series.length; sIdx++) {
+        const ser = series[sIdx];
+        const val = ser.values[cIdx] || 0;
+        const color = "#" + getDynamicChartColor(ser.name, sIdx);
+        const yPos = startY + sIdx * barHeight;
 
-      // Colored bar if val > 0
-      if (d.val > 0) {
-        const barW = (d.val / maxVal) * barAreaWidth;
-        drawCanvasRoundedRect(ctx, startX, startY, barW, barHeight, 4);
-        ctx.fillStyle = d.color;
+        // Background track
+        drawCanvasRoundedRect(ctx, startX, yPos, barAreaWidth, barHeight - 4, 3);
+        ctx.fillStyle = "#F8FAFC";
         ctx.fill();
 
-        // White value inside the bar
-        ctx.fillStyle = "#FFFFFF";
-        ctx.font = "bold 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(String(d.val), startX + barW - 14, startY + barHeight / 2);
+        if (val > 0) {
+          const barW = (val / maxValRounded) * barAreaWidth;
+          drawCanvasRoundedRect(ctx, startX, yPos, barW, barHeight - 4, 3);
+          ctx.fillStyle = color;
+          ctx.fill();
+
+          ctx.fillStyle = "#FFFFFF";
+          ctx.font = "bold 14px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+          ctx.textAlign = "center";
+          if (barW > 30) {
+            ctx.fillText(String(val), startX + barW - 14, yPos + (barHeight - 4) / 2);
+          } else {
+            ctx.fillStyle = "#1E293B";
+            ctx.fillText(String(val), startX + barW + 12, yPos + (barHeight - 4) / 2);
+          }
+        }
       }
 
-      startY += barSpacing;
+      startY += groupSpacing;
     }
 
     // Legend
-    const legY = 432;
-    drawCanvasRoundedRect(ctx, 420, legY, 18, 18, 3);
-    ctx.fillStyle = "#548235";
-    ctx.fill();
-    ctx.fillStyle = "#1E293B";
-    ctx.font = "600 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText("MITIGADO", 446, legY + 9);
+    if (series.length > 1) {
+      let legX = startX;
+      const legY = H - 55;
+      for (let sIdx = 0; sIdx < series.length; sIdx++) {
+        const ser = series[sIdx];
+        const color = "#" + getDynamicChartColor(ser.name, sIdx);
 
-    drawCanvasRoundedRect(ctx, 580, legY, 18, 18, 3);
-    ctx.fillStyle = "#C00000";
-    ctx.fill();
-    ctx.fillStyle = "#1E293B";
-    ctx.fillText("VULNERABLE", 606, legY + 9);
+        drawCanvasRoundedRect(ctx, legX, legY, 18, 18, 3);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.fillStyle = "#1E293B";
+        ctx.font = "600 15px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(ser.name, legX + 24, legY + 9);
 
-    // Executive summary footer bar
-    const barY = 492;
-    drawCanvasRoundedRect(ctx, 40, barY, W - 80, 44, 8);
+        legX += ctx.measureText(ser.name).width + 50;
+      }
+    }
+  }
+
+  // Footer bar if subtitle/summary provided
+  if (options.subtitle || options.summary) {
+    const text = options.subtitle || options.summary;
+    const barY = H - 56;
+    drawCanvasRoundedRect(ctx, 40, barY, W - 80, 40, 8);
     ctx.fillStyle = "#F0FDF4";
     ctx.fill();
     ctx.strokeStyle = "#BBF7D0";
@@ -2936,10 +2916,10 @@ function generateCorporateChartBase64(options = {}) {
     ctx.stroke();
 
     ctx.fillStyle = "#166534";
-    ctx.font = "600 17px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.font = "600 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("✔ 100% de vulnerabilidades mitigadas tras medidas correctivas (2 de 2 evaluadas)", W / 2, barY + 22);
+    ctx.fillText(text, W / 2, barY + 20);
   }
 
   return canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
@@ -2959,15 +2939,15 @@ async function handleWordChartUpdate(context, op) {
 
       const selText = (selection.text || "").trim();
       const hasChartKeyword =
-        selText.includes("Distribución") ||
-        selText.includes("Vulnerabilidad") ||
-        selText.includes("MITIGADO") ||
-        selText.includes("50%") ||
-        selText.includes("gráfico");
+        (op.title && selText.includes(op.title)) ||
+        selText.toLowerCase().includes("chart") ||
+        selText.toLowerCase().includes("gráfico") ||
+        selText.toLowerCase().includes("tabla");
 
       if (
         (selPics.items && selPics.items.length > 0) ||
         hasChartKeyword ||
+        state.selectedType === "chart" ||
         (selText.length > 0 && selText.length < 200)
       ) {
         targetParagraph = selection.paragraphs.getFirst();
@@ -2976,28 +2956,29 @@ async function handleWordChartUpdate(context, op) {
       }
     } catch (_) {}
 
-    // 2. Search for the plain text that was mistakenly inserted
-    if (!targetParagraph) {
-      const textQueries = [
-        "Distribución de Vulnerabilidades",
-        "Medio (MITIGADO)",
-        "Bajo (MITIGADO)",
-        "50% (1)"
-      ];
-      for (const q of textQueries) {
+    // 2. Search for explicit target anchor or chart title
+    if (!targetParagraph && (op.target || op.title)) {
+      const searchTerms = [op.target, op.title].filter(Boolean);
+      for (const term of searchTerms) {
         try {
-          const results = await searchRangesInBody(context, q, false);
+          const results = await searchRangesInBody(context, term, false);
           if (results.length > 0) {
-            targetParagraph = results[0].paragraphs.getFirst();
-            targetParagraph.load("text");
-            await context.sync();
+            const anchorP = results[0].paragraphs.getFirst();
+            try {
+              const nextP = anchorP.getNext();
+              nextP.load("text");
+              await context.sync();
+              targetParagraph = nextP;
+            } catch (_) {
+              targetParagraph = anchorP;
+            }
             break;
           }
         } catch (_) {}
       }
     }
 
-    // 3. Search for preceding caption: "El gráfico siguiente muestra" -> target next paragraph
+    // 3. Search for preceding caption in document: "El gráfico siguiente muestra" -> target next paragraph
     if (!targetParagraph) {
       try {
         const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
@@ -3013,7 +2994,7 @@ async function handleWordChartUpdate(context, op) {
       } catch (_) {}
     }
 
-    // 4. Search for any existing inlinePictures in body (e.g. if donut chart already exists)
+    // 4. Search for any existing inlinePictures in body (e.g. if chart graphic already exists)
     if (!targetParagraph) {
       try {
         const pics = context.document.body.inlinePictures;
@@ -3073,13 +3054,12 @@ async function handleWordChartUpdate(context, op) {
     // Priority 1: Native Flat OPC OOXML (triggers native Chart Design & Format ribbon tabs)
     try {
       const flatOpc = generateNativeChartFlatOpc({
-        chartType: isPie ? "pie" : "bar",
-        title: op.title || "Distribución de Severidad de Vulnerabilidades",
-        series: op.series || [
-          { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
-          { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
-        ],
-        categories: op.categories || (isPie ? ["Media (MITIGADO)", "Baja (MITIGADO)"] : ["INFORMATIVA", "BAJA", "MEDIA", "ALTA", "CRÍTICA"])
+        chartType: reqType,
+        title: op.title || "",
+        series: op.series,
+        categories: op.categories,
+        data: op.data,
+        values: op.values
       });
 
       targetParagraph.insertOoxml(flatOpc, Word.InsertLocation.replace);
@@ -3092,13 +3072,13 @@ async function handleWordChartUpdate(context, op) {
     // Priority 2 Fallback: High-resolution Canvas 2x Retina PNG graphic
     try {
       const base64Png = generateCorporateChartBase64({
-        chartType: isPie ? "doughnut" : "bar",
-        title: op.title || "Distribución de Severidad de Vulnerabilidades",
-        series: op.series || [
-          { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
-          { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
-        ],
-        categories: op.categories || ["Media", "Baja"]
+        chartType: reqType,
+        title: op.title || "",
+        series: op.series,
+        categories: op.categories,
+        data: op.data,
+        values: op.values,
+        subtitle: op.subtitle || op.summary || ""
       });
 
       const pic = targetParagraph.insertInlinePictureFromBase64(base64Png, Word.InsertLocation.replace);
