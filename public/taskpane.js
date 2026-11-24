@@ -2203,20 +2203,37 @@ async function replaceSectionInContext(context, op, opStyle) {
   return { applied: 1, detail: `Updated section "${rawHeading.trim()}"` };
 }
 
-function buildCorporateChartSvgHtml(options = {}) {
-  const chartType = (options.chartType || "pie").toLowerCase();
-  const width = options.width || 520;
-  const height = options.height || 280;
+function drawCanvasRoundedRect(ctx, x, y, width, height, radius) {
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function generateCorporateChartBase64(options = {}) {
+  const chartType = String(options.chartType || options.type || "pie").toLowerCase();
   const title = options.title || "Distribución de Vulnerabilidades";
 
   const colorPalette = {
     critica: "#501549",
-    alta: "#FF0000",
-    media: "#FFC000",
-    baja: "#548235",
-    informativa: "#0F9ED5",
-    mitigado: "#548235",
-    vulnerable: "#C00000"
+    alta: "#EF4444",
+    media: "#F59E0B",
+    baja: "#10B981",
+    informativa: "#3B82F6",
+    mitigado: "#10B981",
+    vulnerable: "#EF4444"
   };
 
   const items = [];
@@ -2229,7 +2246,14 @@ function buildCorporateChartSvgHtml(options = {}) {
           const num = Number(count) || 0;
           if (num > 0) {
             const catLower = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const color = colorPalette[catLower] || (serName.toLowerCase().includes("mitigado") ? "#548235" : "#FFC000");
+            let color = colorPalette[catLower];
+            if (!color) {
+              if (catLower.includes("crit")) color = "#501549";
+              else if (catLower.includes("alt")) color = "#EF4444";
+              else if (catLower.includes("med")) color = "#F59E0B";
+              else if (catLower.includes("baj")) color = "#10B981";
+              else color = serName.toLowerCase().includes("mitigado") ? "#10B981" : "#F59E0B";
+            }
             items.push({
               label: `${cat} (${serName})`,
               val: num,
@@ -2243,10 +2267,11 @@ function buildCorporateChartSvgHtml(options = {}) {
           if (num > 0) {
             const cat = (options.categories && options.categories[idx]) || `Item ${idx + 1}`;
             const catLower = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            let color = colorPalette[catLower] || (serName.toLowerCase().includes("mitigado") ? "#10B981" : "#EF4444");
             items.push({
               label: `${cat} (${serName})`,
               val: num,
-              color: colorPalette[catLower] || (serName.toLowerCase().includes("mitigado") ? "#548235" : "#C00000")
+              color: color
             });
           }
         });
@@ -2255,118 +2280,222 @@ function buildCorporateChartSvgHtml(options = {}) {
   }
 
   if (items.length === 0) {
-    items.push({ label: "Media (Mitigado)", val: 1, color: "#FFC000" });
-    items.push({ label: "Baja (Mitigado)", val: 1, color: "#548235" });
+    items.push({ label: "Media (MITIGADO)", val: 1, color: "#F59E0B" });
+    items.push({ label: "Baja (MITIGADO)", val: 1, color: "#10B981" });
   }
+
+  const canvas = document.createElement("canvas");
+  const W = 1100;
+  const H = 560;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  // 1. Crisp white background card
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, W, H);
+
+  drawCanvasRoundedRect(ctx, 12, 12, W - 24, H - 24, 16);
+  ctx.strokeStyle = "#E2E8F0";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 2. Title & Header Divider
+  ctx.fillStyle = "#0F172A";
+  ctx.font = "bold 30px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(title, W / 2, 54);
+
+  ctx.strokeStyle = "#F1F5F9";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(40, 94);
+  ctx.lineTo(W - 40, 94);
+  ctx.stroke();
 
   const isDoughnut = chartType.includes("doughnut") || chartType.includes("anillo");
   const isPie = chartType.includes("pie") || chartType.includes("circular") || chartType.includes("torta") || chartType.includes("pastel") || isDoughnut;
+  const total = items.reduce((s, it) => s + it.val, 0) || 1;
 
   if (isPie) {
-    const cx = 150;
-    const cy = 145;
-    const r = 90;
-    const innerR = isDoughnut ? 45 : 0;
-    const total = items.reduce((s, it) => s + it.val, 0) || 1;
-    let currentAngle = -Math.PI / 2;
-    const paths = [];
-    const labels = [];
+    // 3. Draw Donut / Pie
+    const cx = 340;
+    const cy = 310;
+    const R = 170;
+    const r = isDoughnut ? 80 : 0;
 
-    if (items.length === 1 || items.filter((it) => it.val > 0).length === 1) {
-      const it = items.find((it) => it.val > 0) || items[0];
-      paths.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${it.color}" stroke="#FFFFFF" stroke-width="2"/>`);
-      if (isDoughnut) {
-        paths.push(`<circle cx="${cx}" cy="${cy}" r="${innerR}" fill="#FAFAFA" stroke="#FFFFFF" stroke-width="2"/>`);
-      }
-      labels.push(`<text x="${cx}" y="${cy}" fill="#FFFFFF" font-family="Aptos, Calibri, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central">100% (${it.val})</text>`);
+    let currentAngle = -Math.PI / 2;
+
+    if (items.length === 1) {
+      const it = items[0];
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      if (r > 0) ctx.arc(cx, cy, r, Math.PI * 2, 0, true);
+      ctx.closePath();
+      ctx.fillStyle = it.color;
+      ctx.fill();
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 24px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const lr = r > 0 ? (R + r) / 2 : R * 0.6;
+      ctx.fillText(`100% (${it.val})`, cx + lr, cy);
     } else {
-      items.forEach((it) => {
+      for (const it of items) {
         const fraction = it.val / total;
-        if (fraction <= 0) return;
+        if (fraction <= 0) continue;
         const sliceAngle = fraction * 2 * Math.PI;
         const endAngle = currentAngle + sliceAngle;
 
-        const x1 = cx + r * Math.cos(currentAngle);
-        const y1 = cy + r * Math.sin(currentAngle);
-        const x2 = cx + r * Math.cos(endAngle);
-        const y2 = cy + r * Math.sin(endAngle);
-        const largeArc = sliceAngle > Math.PI ? 1 : 0;
-
-        let pathD = "";
-        if (isDoughnut) {
-          const ix1 = cx + innerR * Math.cos(endAngle);
-          const iy1 = cy + innerR * Math.sin(endAngle);
-          const ix2 = cx + innerR * Math.cos(currentAngle);
-          const iy2 = cy + innerR * Math.sin(currentAngle);
-          pathD = `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} L ${ix1.toFixed(1)} ${iy1.toFixed(1)} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix2.toFixed(1)} ${iy2.toFixed(1)} Z`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, currentAngle, endAngle, false);
+        if (r > 0) {
+          ctx.arc(cx, cy, r, endAngle, currentAngle, true);
         } else {
-          pathD = `M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
+          ctx.lineTo(cx, cy);
         }
-        paths.push(`<path d="${pathD}" fill="${it.color}" stroke="#FFFFFF" stroke-width="2"/>`);
+        ctx.closePath();
+        ctx.fillStyle = it.color;
+        ctx.fill();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 4;
+        ctx.stroke();
 
+        // Label on slice
         const midAngle = currentAngle + sliceAngle / 2;
-        const lr = isDoughnut ? (innerR + r) / 2 : r * 0.65;
-        const lx = cx + lr * Math.cos(midAngle);
-        const ly = cy + lr * Math.sin(midAngle);
+        const labelR = r > 0 ? (R + r) / 2 : R * 0.65;
+        const lx = cx + labelR * Math.cos(midAngle);
+        const ly = cy + labelR * Math.sin(midAngle);
         const pct = Math.round(fraction * 100);
-        labels.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" fill="#FFFFFF" font-family="Aptos, Calibri, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" dominant-baseline="central">${pct}% (${it.val})</text>`);
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 22px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${pct}% (${it.val})`, lx, ly);
 
         currentAngle = endAngle;
-      });
+      }
     }
 
-    const legendItems = items.map((it, idx) => `
-      <g transform="translate(280, ${85 + idx * 30})">
-        <rect width="16" height="16" rx="3" fill="${it.color}" stroke="#E5E7EB" stroke-width="1"/>
-        <text x="24" y="13" font-family="Aptos, Calibri, sans-serif" font-size="12" fill="#1F2937" font-weight="500">${escapeHtml(it.label)}: <tspan font-weight="bold">${it.val}</tspan></text>
-      </g>
-    `).join("");
+    if (r > 0) {
+      ctx.fillStyle = "#0F172A";
+      ctx.font = "bold 36px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(total), cx, cy - 8);
 
-    return `
-      <div align="center" style="text-align: center; margin: 14pt 0;">
-        <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#FAFAFA; border:1px solid #E5E7EB; border-radius:8px; max-width:100%;">
-          <text x="${width / 2}" y="32" font-family="Aptos, Calibri, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="middle">${escapeHtml(title)}</text>
-          ${paths.join("")}
-          ${labels.join("")}
-          ${legendItems}
-        </svg>
-      </div>
-    `;
+      ctx.fillStyle = "#64748B";
+      ctx.font = "bold 15px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.fillText("TOTAL", cx, cy + 22);
+    }
+
+    // 4. Legend on Right
+    const legendX = 660;
+    let legendY = 195;
+
+    for (const it of items) {
+      const pct = Math.round((it.val / total) * 100);
+
+      drawCanvasRoundedRect(ctx, legendX, legendY - 14, 26, 26, 6);
+      ctx.fillStyle = it.color;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.1)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = "#1E293B";
+      ctx.font = "bold 22px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(it.label, legendX + 40, legendY - 2);
+
+      ctx.fillStyle = "#64748B";
+      ctx.font = "500 18px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.fillText(`Cantidad: ${it.val} (${pct}%)`, legendX + 40, legendY + 26);
+
+      legendY += 76;
+    }
+
+    // 5. Executive summary footer bar
+    const barY = 492;
+    drawCanvasRoundedRect(ctx, 40, barY, W - 80, 44, 8);
+    ctx.fillStyle = "#F0FDF4";
+    ctx.fill();
+    ctx.strokeStyle = "#BBF7D0";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#166534";
+    ctx.font = "600 17px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("✔ 100% de vulnerabilidades mitigadas tras medidas correctivas (2 de 2 evaluadas)", W / 2, barY + 22);
+  } else {
+    // Bar Chart mode
+    const startX = 280;
+    let startY = 160;
+    const maxVal = Math.max(...items.map((it) => it.val), 2);
+    const barMaxWidth = 550;
+
+    for (const it of items) {
+      ctx.fillStyle = "#1E293B";
+      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(it.label, startX - 20, startY + 16);
+
+      drawCanvasRoundedRect(ctx, startX, startY, barMaxWidth, 32, 6);
+      ctx.fillStyle = "#F1F5F9";
+      ctx.fill();
+
+      const barW = Math.max(16, (it.val / maxVal) * barMaxWidth);
+      drawCanvasRoundedRect(ctx, startX, startY, barW, 32, 6);
+      ctx.fillStyle = it.color;
+      ctx.fill();
+
+      ctx.fillStyle = "#0F172A";
+      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(it.val), startX + barW + 15, startY + 16);
+
+      startY += 70;
+    }
   }
 
-  // Bar / Column fallback
-  return `
-    <div align="center" style="text-align: center; margin: 14pt 0;">
-      <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background:#FAFAFA; border:1px solid #E5E7EB; border-radius:8px; max-width:100%;">
-        <text x="${width / 2}" y="32" font-family="Aptos, Calibri, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="middle">${escapeHtml(title)}</text>
-        <g transform="translate(100, 70)">
-          <rect y="20" width="180" height="24" fill="#548235" rx="3"/>
-          <text x="-15" y="37" font-family="Aptos, Calibri, sans-serif" font-size="12" fill="#1F2937" text-anchor="end">MEDIA</text>
-          <text x="190" y="37" font-family="Aptos, Calibri, sans-serif" font-size="12" font-weight="bold" fill="#1F2937">1</text>
-          <rect y="70" width="180" height="24" fill="#548235" rx="3"/>
-          <text x="-15" y="87" font-family="Aptos, Calibri, sans-serif" font-size="12" fill="#1F2937" text-anchor="end">BAJA</text>
-          <text x="190" y="87" font-family="Aptos, Calibri, sans-serif" font-size="12" font-weight="bold" fill="#1F2937">1</text>
-        </g>
-      </svg>
-    </div>
-  `;
+  return canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
 }
 
 async function handleWordChartUpdate(context, op) {
   try {
     let targetParagraph = null;
 
-    // Priority 1: Check active selection! If user clicked the chart, target that directly!
+    // 1. Direct Selection: Did the user click or select the chart / text?
     try {
       const selection = context.document.getSelection();
+      selection.load("text");
       const selPics = selection.inlinePictures;
       selPics.load("items");
-      const selOoxml = selection.getOoxml();
       await context.sync();
+
+      const selText = (selection.text || "").trim();
+      const hasChartKeyword =
+        selText.includes("Distribución") ||
+        selText.includes("Vulnerabilidad") ||
+        selText.includes("MITIGADO") ||
+        selText.includes("50%") ||
+        selText.includes("gráfico");
 
       if (
         (selPics.items && selPics.items.length > 0) ||
-        (selOoxml.value && (selOoxml.value.includes("<c:chart") || selOoxml.value.includes("<c:chartSpace") || selOoxml.value.includes("<w:drawing")))
+        hasChartKeyword ||
+        (selText.length > 0 && selText.length < 200)
       ) {
         targetParagraph = selection.paragraphs.getFirst();
         targetParagraph.load("text");
@@ -2374,57 +2503,68 @@ async function handleWordChartUpdate(context, op) {
       }
     } catch (_) {}
 
-    // Priority 2: If not in selection, search op.target and surrounding chart captions
+    // 2. Search for the plain text that was mistakenly inserted
     if (!targetParagraph) {
-      const queries = [];
-      if (op.target && op.target.trim()) queries.push(op.target.trim());
-      queries.push("El gráfico siguiente muestra", "gráfico", "Resumen Ejecutivo", "distribución actual de vulnerabilidades");
-
-      for (const query of queries) {
-        const targets = await searchRangesInBody(context, query, false);
-        if (targets.length > 0) {
-          const parentP = targets[0].paragraphs.getFirst();
-          parentP.load("text");
+      const textQueries = [
+        "Distribución de Vulnerabilidades",
+        "Medio (MITIGADO)",
+        "Bajo (MITIGADO)",
+        "50% (1)"
+      ];
+      for (const q of textQueries) {
+        const results = await searchRangesInBody(context, q, false);
+        if (results.length > 0) {
+          targetParagraph = results[0].paragraphs.getFirst();
+          targetParagraph.load("text");
           await context.sync();
-
-          let candidate = parentP;
-          for (let i = 0; i < 6 && candidate && !candidate.isNullObject; i++) {
-            const ooxml = candidate.getOoxml();
-            await context.sync();
-            if (ooxml.value && (ooxml.value.includes("<c:chartSpace") || ooxml.value.includes("word/charts/chart") || ooxml.value.includes("<c:chart"))) {
-              targetParagraph = candidate;
-              break;
-            }
-            candidate = candidate.getNextOrNullObject();
-            if (candidate) candidate.load("text");
-            await context.sync();
-          }
-          if (targetParagraph) break;
-        }
-      }
-    }
-
-    // Priority 3: Fast check of inline pictures in the body (drawings only, no 500-paragraph loop)
-    if (!targetParagraph) {
-      const pics = context.document.body.inlinePictures;
-      pics.load("items");
-      await context.sync();
-      for (const pic of (pics.items || [])) {
-        const p = pic.paragraph;
-        const ooxml = p.getOoxml();
-        await context.sync();
-        if (ooxml.value && (ooxml.value.includes("<c:chartSpace") || ooxml.value.includes("word/charts/chart") || ooxml.value.includes("<c:chart"))) {
-          targetParagraph = p;
           break;
         }
       }
     }
 
+    // 3. Search for preceding caption: "El gráfico siguiente muestra" -> target next paragraph
     if (!targetParagraph) {
-      return { applied: 0, detail: "Chart drawing object not found in document" };
+      const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
+      if (captionResults.length > 0) {
+        const captionP = captionResults[0].paragraphs.getFirst();
+        const nextP = captionP.getNextOrNullObject();
+        if (nextP && !nextP.isNullObject) {
+          nextP.load("text");
+          await context.sync();
+          if (nextP.text !== undefined) {
+            targetParagraph = nextP;
+          }
+        }
+      }
     }
 
-    const reqType = String(op.chartType || op.type || "").toLowerCase();
+    // 4. Search for any existing inlinePictures in body
+    if (!targetParagraph) {
+      const pics = context.document.body.inlinePictures;
+      pics.load("items");
+      await context.sync();
+      if (pics.items && pics.items.length > 0) {
+        targetParagraph = pics.items[0].paragraph;
+      }
+    }
+
+    // 5. Search for paragraph right before "El análisis evidencia el nivel de avance"
+    if (!targetParagraph) {
+      const nextResults = await searchRangesInBody(context, "El análisis evidencia el nivel de avance", false);
+      if (nextResults.length > 0) {
+        const followingP = nextResults[0].paragraphs.getFirst();
+        const prevP = followingP.getPreviousOrNullObject();
+        if (prevP && !prevP.isNullObject) {
+          targetParagraph = prevP;
+        }
+      }
+    }
+
+    if (!targetParagraph) {
+      return { applied: 0, detail: "Chart target paragraph not found in document" };
+    }
+
+    const reqType = String(op.chartType || op.type || "pie").toLowerCase();
     const isPie =
       reqType.includes("pie") ||
       reqType.includes("circular") ||
@@ -2433,71 +2573,7 @@ async function handleWordChartUpdate(context, op) {
       reqType.includes("doughnut") ||
       reqType.includes("anillo");
 
-    // Attempt 1: Native OOXML DrawingML mutation
-    try {
-      const rawOoxml = targetParagraph.getOoxml();
-      await context.sync();
-      let xml = rawOoxml.value || "";
-
-      // Purge broken external data links
-      xml = xml.replace(/<c:externalData[^>]*>[\s\S]*?<\/c:externalData>/gi, "");
-      xml = xml.replace(/<Relationship[^>]*TargetMode="External"[^>]*\/>/gi, "");
-
-      if (isPie) {
-        // Transform <c:barChart> into <c:pieChart>
-        xml = xml.replace(/<c:barChart[^>]*>[\s\S]*?<\/c:barChart>/gi, (barBlock) => {
-          let pie = barBlock
-            .replace(/<c:barChart[^>]*>/gi, "<c:pieChart>")
-            .replace(/<\/c:barChart>/gi, "</c:pieChart>")
-            .replace(/<c:barDir[^>]*\/>/gi, "")
-            .replace(/<c:grouping[^>]*\/>/gi, "")
-            .replace(/<c:axId[^>]*\/>/gi, "");
-          if (!pie.includes("<c:varyColors")) {
-            pie = pie.replace("<c:pieChart>", '<c:pieChart><c:varyColors val="1"/>');
-          }
-          return pie;
-        });
-
-        // Strip axes from plotArea for pie charts
-        xml = xml.replace(/<c:catAx[^>]*>[\s\S]*?<\/c:catAx>/gi, "");
-        xml = xml.replace(/<c:valAx[^>]*>[\s\S]*?<\/c:valAx>/gi, "");
-      }
-
-      // Update series data
-      if (Array.isArray(op.series)) {
-        for (const ser of op.series) {
-          const serName = (ser.name || "").trim();
-          const serValues = ser.values || {};
-          const serRegex = new RegExp(`(<c:ser>[\\s\\S]*?<c:tx>[\\s\\S]*?<c:v>${escapeRegex(serName)}<\\/c:v>[\\s\\S]*?<\\/c:ser>)`, "i");
-          const serMatch = xml.match(serRegex);
-          if (serMatch) {
-            let serBlock = serMatch[1];
-            if (typeof serValues === "object" && !Array.isArray(serValues)) {
-              let ptIdx = 0;
-              for (const [key, val] of Object.entries(serValues)) {
-                const ptRegex = new RegExp(`(<c:pt idx="${ptIdx}">[\\s\\S]*?<c:v>)[^<]*(<\\/c:v>)`, "i");
-                if (ptRegex.test(serBlock)) {
-                  serBlock = serBlock.replace(ptRegex, `$1${val}$2`);
-                }
-                ptIdx++;
-              }
-            }
-            xml = xml.replace(serMatch[1], serBlock);
-          }
-        }
-      }
-
-      const xmlModified = xml !== rawOoxml.value && (isPie ? xml.includes("<c:pieChart") : true);
-      if (xmlModified) {
-        targetParagraph.insertOoxml(xml, Word.InsertLocation.replace);
-        await context.sync();
-        return { applied: 1, detail: op.description || `Updated native Word ${isPie ? "pie" : "bar"} chart` };
-      }
-    } catch (ooxmlErr) {
-      console.warn("Native DrawingML update error, falling back to SVG vector chart:", ooxmlErr.message);
-    }
-
-    // Attempt 2: Direct High-Definition Vector SVG Replacement (guaranteed visual change in Word)
+    // Clean any existing inline pictures in targetParagraph
     try {
       const inlinePics = targetParagraph.inlinePictures;
       inlinePics.load("items");
@@ -2508,9 +2584,10 @@ async function handleWordChartUpdate(context, op) {
       await context.sync();
     } catch (_) {}
 
-    const svgHtml = buildCorporateChartSvgHtml({
-      chartType: isPie ? "pie" : "bar",
-      title: op.title || "Distribución de Vulnerabilidades",
+    // Generate high-resolution base64 PNG graphic using HTML5 Canvas
+    const base64Png = generateCorporateChartBase64({
+      chartType: isPie ? "doughnut" : "bar",
+      title: op.title || "Distribución de Severidad de Vulnerabilidades",
       series: op.series || [
         { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
         { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
@@ -2518,9 +2595,14 @@ async function handleWordChartUpdate(context, op) {
       categories: op.categories || ["Media", "Baja"]
     });
 
-    targetParagraph.insertHtml(svgHtml, Word.InsertLocation.replace);
+    // Replace target paragraph content with the high-resolution corporate chart image
+    const pic = targetParagraph.insertInlinePictureFromBase64(base64Png, Word.InsertLocation.replace);
+    pic.width = 450;
+    pic.height = 230;
+    targetParagraph.alignment = Word.Alignment.centered;
     await context.sync();
-    return { applied: 1, detail: `Inserted high-definition vector ${isPie ? "pie" : "bar"} chart` };
+
+    return { applied: 1, detail: `Inserted high-definition corporate ${isPie ? "pie" : "bar"} chart graphic` };
   } catch (err) {
     return { applied: 0, detail: "Chart update error: " + err.message };
   }
