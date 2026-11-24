@@ -208,6 +208,10 @@ function handleSideload() {
       try {
         if (!fs.existsSync(wefDir)) fs.mkdirSync(wefDir, { recursive: true });
         fs.copyFileSync(manifestPath, path.join(wefDir, "manifest.xml"));
+        const cacheDir = path.join(os.homedir(), "Library", "Containers", bundleId, "Data", "Library", "Caches");
+        const wefCacheDir = path.join(os.homedir(), "Library", "Containers", bundleId, "Data", "Library", "Application Support", "Microsoft", "Office", "16.0", "Wef");
+        try { fs.rmSync(cacheDir, { recursive: true, force: true }); } catch (_) {}
+        try { fs.rmSync(wefCacheDir, { recursive: true, force: true }); } catch (_) {}
         console.log(`[office-ai] Sideloaded manifest to ${bundleId}`);
       } catch (e) {
         console.warn(`[office-ai] Could not write to ${bundleId}: ${e.message}`);

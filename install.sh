@@ -90,6 +90,9 @@ sideload_office_apps() {
 
     if mkdir -p "$wef_dir" 2>/dev/null && cp -f "$MANIFEST_SRC" "$wef_dir/manifest.xml" 2>/dev/null; then
       log "${app_name}: manifest installed to $wef_dir/manifest.xml"
+      # Purge WEF caches so Office immediately reflects updated name, icons, and ribbon buttons
+      rm -rf "$HOME/Library/Containers/${bundle_id}/Data/Library/Caches"/* 2>/dev/null || true
+      rm -rf "$HOME/Library/Containers/${bundle_id}/Data/Library/Application Support/Microsoft/Office/16.0/Wef"/* 2>/dev/null || true
     else
       log "${app_name}: run 'office-ai install' in Terminal.app if the add-in is not yet visible in the Ribbon."
     fi
