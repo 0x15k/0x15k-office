@@ -1371,6 +1371,9 @@ function freePortSync(port) {
 function listenWithPortRecovery(server, port, onListening) {
   let retried = false;
 
+  // Proactively clear any conflicting listener on this port before binding
+  freePortSync(port);
+
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE" && !retried) {
       retried = true;
