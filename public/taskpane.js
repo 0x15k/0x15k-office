@@ -24,6 +24,9 @@ const HOST_CONFIG = {
       }
     ],
     slashCommands: [
+      { cmd: "/accept", desc: "Accept all tracked changes in document", action: "acceptAllChanges", template: "/accept" },
+      { cmd: "/reject", desc: "Reject all tracked changes in document", action: "rejectAllChanges", template: "/reject" },
+      { cmd: "/track", desc: "Toggle track changes mode (ON / OFF)", action: "toggleTrackChanges", template: "/track" },
       { cmd: "/replace", desc: "Find and replace across document", template: 'Find and replace across the document: "OLD" with "NEW".' },
       { cmd: "/format", desc: "Standardize typography and layout", template: "Standardize formatting, fonts, spacing, and hierarchy across the entire document while preserving its language." },
       { cmd: "/fix-all", desc: "Proofread and fix grammar/spelling", template: "Proofread the document and fix any spelling, grammar, or punctuation errors." },
@@ -438,6 +441,22 @@ function selectSlashCommand(cmd) {
   const inputEl = document.getElementById("prompt-input");
   document.getElementById("slash-menu").classList.remove("open");
   if (!item) return;
+
+  if (item.action === "acceptAllChanges") {
+    inputEl.value = "";
+    acceptAllTrackedChanges();
+    return;
+  }
+  if (item.action === "rejectAllChanges") {
+    inputEl.value = "";
+    rejectAllTrackedChanges();
+    return;
+  }
+  if (item.action === "toggleTrackChanges") {
+    inputEl.value = "";
+    toggleTrackChangesMode();
+    return;
+  }
 
   inputEl.value = item.template;
   inputEl.focus();
@@ -1071,6 +1090,22 @@ async function handleSubmit() {
   if (!prompt || state.isGenerating) return;
 
   document.getElementById("slash-menu").classList.remove("open");
+
+  if (prompt.toLowerCase() === "/accept") {
+    inputEl.value = "";
+    acceptAllTrackedChanges();
+    return;
+  }
+  if (prompt.toLowerCase() === "/reject") {
+    inputEl.value = "";
+    rejectAllTrackedChanges();
+    return;
+  }
+  if (prompt.toLowerCase() === "/track") {
+    inputEl.value = "";
+    toggleTrackChangesMode();
+    return;
+  }
 
   await syncContext(false);
   const fullContext = await readActiveHostFullContext();
@@ -1825,6 +1860,70 @@ function enableTrackChangesIfNeeded(context, shouldTrack) {
   }
 }
 
+async function acceptAllTrackedChanges() {
+  if (state.host !== "Word" || typeof Word === "undefined") {
+    showToast("Track Changes is only available in Microsoft Word", "info");
+    return;
+  }
+  try {
+    await Word.run(async (context) => {
+      if (context.document.body.getTrackedChanges) {
+        const changes = context.document.body.getTrackedChanges();
+        changes.acceptAll();
+        await context.sync();
+        showToast("Accepted all tracked changes in document", "success");
+      } else {
+        showToast("Track changes API not supported in this Word build", "info");
+      }
+    });
+  } catch (err) {
+    showToast("Error accepting changes: " + err.message, "error");
+  }
+}
+
+async function rejectAllTrackedChanges() {
+  if (state.host !== "Word" || typeof Word === "undefined") {
+    showToast("Track Changes is only available in Microsoft Word", "info");
+    return;
+  }
+  try {
+    await Word.run(async (context) => {
+      if (context.document.body.getTrackedChanges) {
+        const changes = context.document.body.getTrackedChanges();
+        changes.load("items");
+        await context.sync();
+        for (const item of (changes.items || [])) {
+          item.reject();
+        }
+        await context.sync();
+        showToast("Rejected all tracked changes in document", "success");
+      } else {
+        showToast("Track changes API not supported in this Word build", "info");
+      }
+    });
+  } catch (err) {
+    showToast("Error rejecting changes: " + err.message, "error");
+  }
+}
+
+async function toggleTrackChangesMode() {
+  if (state.host !== "Word" || typeof Word === "undefined") return;
+  try {
+    await Word.run(async (context) => {
+      context.document.load("changeTrackingMode");
+      await context.sync();
+      const current = context.document.changeTrackingMode;
+      const isTracking = current && current !== "Off" && current !== Word.ChangeTrackingMode?.off;
+      const nextMode = isTracking ? Word.ChangeTrackingMode.off : Word.ChangeTrackingMode.trackAll;
+      context.document.changeTrackingMode = nextMode;
+      await context.sync();
+      showToast(isTracking ? "Track Changes turned OFF" : "Track Changes turned ON", "success");
+    });
+  } catch (err) {
+    showToast("Could not toggle track changes: " + err.message, "error");
+  }
+}
+
 async function searchRangesInBody(context, queryText, matchCase = false) {
   let cleanQuery = (queryText || "").trim();
   if (!cleanQuery) return [];
@@ -2437,36 +2536,122 @@ function generateCorporateChartBase64(options = {}) {
     ctx.textBaseline = "middle";
     ctx.fillText("✔ 100% de vulnerabilidades mitigadas tras medidas correctivas (2 de 2 evaluadas)", W / 2, barY + 22);
   } else {
-    // Bar Chart mode
-    const startX = 280;
-    let startY = 160;
-    const maxVal = Math.max(...items.map((it) => it.val), 2);
-    const barMaxWidth = 550;
+    // Executive Severity Distribution Horizontal Bar Chart
+    const categories = ["CRÍTICA", "ALTA", "MEDIA", "BAJA", "INFORMATIVA"];
+    const catData = {
+      "CRÍTICA": { val: 0, color: "#501549" },
+      "ALTA": { val: 0, color: "#EF4444" },
+      "MEDIA": { val: 1, color: "#548235" },
+      "BAJA": { val: 1, color: "#548235" },
+      "INFORMATIVA": { val: 0, color: "#3B82F6" }
+    };
 
-    for (const it of items) {
+    if (Array.isArray(options.series)) {
+      for (const ser of options.series) {
+        const sName = (ser.name || "").toUpperCase();
+        const vals = ser.values || {};
+        if (typeof vals === "object" && !Array.isArray(vals)) {
+          for (const [k, v] of Object.entries(vals)) {
+            const num = Number(v) || 0;
+            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            for (const cat of categories) {
+              const catNorm = cat.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              if (kNorm.includes(catNorm)) {
+                catData[cat].val = num;
+                if (sName.includes("MITIGADO")) catData[cat].color = "#548235";
+                else if (num > 0) catData[cat].color = "#C00000";
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const startX = 250;
+    let startY = 130;
+    const barHeight = 26;
+    const barSpacing = 52;
+    const maxVal = 2;
+    const barAreaWidth = 640;
+
+    // Grid lines and scale ticks
+    ctx.strokeStyle = "#E2E8F0";
+    ctx.lineWidth = 1;
+    ctx.font = "500 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.fillStyle = "#64748B";
+    ctx.textAlign = "center";
+
+    for (let tick = 0; tick <= maxVal; tick++) {
+      const tickX = startX + (tick / maxVal) * barAreaWidth;
+      ctx.beginPath();
+      ctx.moveTo(tickX, 115);
+      ctx.lineTo(tickX, 115 + categories.length * barSpacing + 6);
+      ctx.stroke();
+      ctx.fillText(String(tick), tickX, 115 + categories.length * barSpacing + 28);
+    }
+
+    for (const cat of categories) {
+      const d = catData[cat];
+
+      // Y-axis label
       ctx.fillStyle = "#1E293B";
-      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+      ctx.font = "bold 18px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-      ctx.fillText(it.label, startX - 20, startY + 16);
+      ctx.fillText(cat, startX - 22, startY + barHeight / 2);
 
-      drawCanvasRoundedRect(ctx, startX, startY, barMaxWidth, 32, 6);
-      ctx.fillStyle = "#F1F5F9";
+      // Background track
+      drawCanvasRoundedRect(ctx, startX, startY, barAreaWidth, barHeight, 4);
+      ctx.fillStyle = "#F8FAFC";
       ctx.fill();
 
-      const barW = Math.max(16, (it.val / maxVal) * barMaxWidth);
-      drawCanvasRoundedRect(ctx, startX, startY, barW, 32, 6);
-      ctx.fillStyle = it.color;
-      ctx.fill();
+      // Colored bar if val > 0
+      if (d.val > 0) {
+        const barW = (d.val / maxVal) * barAreaWidth;
+        drawCanvasRoundedRect(ctx, startX, startY, barW, barHeight, 4);
+        ctx.fillStyle = d.color;
+        ctx.fill();
 
-      ctx.fillStyle = "#0F172A";
-      ctx.font = "bold 20px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(it.val), startX + barW + 15, startY + 16);
+        // White value inside the bar
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(String(d.val), startX + barW - 14, startY + barHeight / 2);
+      }
 
-      startY += 70;
+      startY += barSpacing;
     }
+
+    // Legend
+    const legY = 432;
+    drawCanvasRoundedRect(ctx, 420, legY, 18, 18, 3);
+    ctx.fillStyle = "#548235";
+    ctx.fill();
+    ctx.fillStyle = "#1E293B";
+    ctx.font = "600 16px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("MITIGADO", 446, legY + 9);
+
+    drawCanvasRoundedRect(ctx, 580, legY, 18, 18, 3);
+    ctx.fillStyle = "#C00000";
+    ctx.fill();
+    ctx.fillStyle = "#1E293B";
+    ctx.fillText("VULNERABLE", 606, legY + 9);
+
+    // Executive summary footer bar
+    const barY = 492;
+    drawCanvasRoundedRect(ctx, 40, barY, W - 80, 44, 8);
+    ctx.fillStyle = "#F0FDF4";
+    ctx.fill();
+    ctx.strokeStyle = "#BBF7D0";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = "#166534";
+    ctx.font = "600 17px Aptos, -apple-system, BlinkMacSystemFont, 'Segoe UI', Calibri, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("✔ 100% de vulnerabilidades mitigadas tras medidas correctivas (2 de 2 evaluadas)", W / 2, barY + 22);
   }
 
   return canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
@@ -2512,52 +2697,60 @@ async function handleWordChartUpdate(context, op) {
         "50% (1)"
       ];
       for (const q of textQueries) {
-        const results = await searchRangesInBody(context, q, false);
-        if (results.length > 0) {
-          targetParagraph = results[0].paragraphs.getFirst();
-          targetParagraph.load("text");
-          await context.sync();
-          break;
-        }
+        try {
+          const results = await searchRangesInBody(context, q, false);
+          if (results.length > 0) {
+            targetParagraph = results[0].paragraphs.getFirst();
+            targetParagraph.load("text");
+            await context.sync();
+            break;
+          }
+        } catch (_) {}
       }
     }
 
     // 3. Search for preceding caption: "El gráfico siguiente muestra" -> target next paragraph
     if (!targetParagraph) {
-      const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
-      if (captionResults.length > 0) {
-        const captionP = captionResults[0].paragraphs.getFirst();
-        const nextP = captionP.getNextOrNullObject();
-        if (nextP && !nextP.isNullObject) {
-          nextP.load("text");
+      try {
+        const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
+        if (captionResults.length > 0) {
+          const captionP = captionResults[0].paragraphs.getFirst();
+          const nextP = captionP.getNextOrNullObject();
+          nextP.load("isNullObject");
           await context.sync();
-          if (nextP.text !== undefined) {
+          if (!nextP.isNullObject) {
             targetParagraph = nextP;
           }
         }
-      }
+      } catch (_) {}
     }
 
-    // 4. Search for any existing inlinePictures in body
+    // 4. Search for any existing inlinePictures in body (e.g. if donut chart already exists)
     if (!targetParagraph) {
-      const pics = context.document.body.inlinePictures;
-      pics.load("items");
-      await context.sync();
-      if (pics.items && pics.items.length > 0) {
-        targetParagraph = pics.items[0].paragraph;
-      }
+      try {
+        const pics = context.document.body.inlinePictures;
+        pics.load("items");
+        await context.sync();
+        if (pics.items && pics.items.length > 0) {
+          targetParagraph = pics.items[0].paragraph;
+        }
+      } catch (_) {}
     }
 
     // 5. Search for paragraph right before "El análisis evidencia el nivel de avance"
     if (!targetParagraph) {
-      const nextResults = await searchRangesInBody(context, "El análisis evidencia el nivel de avance", false);
-      if (nextResults.length > 0) {
-        const followingP = nextResults[0].paragraphs.getFirst();
-        const prevP = followingP.getPreviousOrNullObject();
-        if (prevP && !prevP.isNullObject) {
-          targetParagraph = prevP;
+      try {
+        const nextResults = await searchRangesInBody(context, "El análisis evidencia el nivel de avance", false);
+        if (nextResults.length > 0) {
+          const followingP = nextResults[0].paragraphs.getFirst();
+          const prevP = followingP.getPreviousOrNullObject();
+          prevP.load("isNullObject");
+          await context.sync();
+          if (!prevP.isNullObject) {
+            targetParagraph = prevP;
+          }
         }
-      }
+      } catch (_) {}
     }
 
     if (!targetParagraph) {
@@ -2566,12 +2759,15 @@ async function handleWordChartUpdate(context, op) {
 
     const reqType = String(op.chartType || op.type || "pie").toLowerCase();
     const isPie =
-      reqType.includes("pie") ||
+      (reqType.includes("pie") ||
       reqType.includes("circular") ||
       reqType.includes("torta") ||
       reqType.includes("pastel") ||
       reqType.includes("doughnut") ||
-      reqType.includes("anillo");
+      reqType.includes("anillo")) &&
+      !reqType.includes("barra") &&
+      !reqType.includes("bar") &&
+      !reqType.includes("colum");
 
     // Clean any existing inline pictures in targetParagraph
     try {

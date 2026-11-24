@@ -110,26 +110,15 @@ const SUPPORTED_OP_TYPES = Array.from(
 );
 
 const BUILTIN_SKILLS_DIR = path.join(__dirname, "skills");
-const CUSTOM_SKILLS_DIR = path.join(__dirname, "custom_skills");
+const USER_HOME = process.env.HOME || process.env.USERPROFILE || "";
+const USER_DATA_DIR = USER_HOME ? path.join(USER_HOME, ".local", "share", "office-ai") : path.join(__dirname, ".local-data");
+const CUSTOM_SKILLS_DIR = path.join(USER_DATA_DIR, "custom_skills");
 const SKILLS_DIR = BUILTIN_SKILLS_DIR; // legacy alias
 
 function getSkillDirectories() {
-  const dirs = [BUILTIN_SKILLS_DIR, CUSTOM_SKILLS_DIR];
-  const sourceMarker = path.join(__dirname, ".source-dir");
-  if (fs.existsSync(sourceMarker)) {
-    try {
-      const sourceRoot = fs.readFileSync(sourceMarker, "utf8").trim();
-      const sourceSkills = sourceRoot ? path.join(sourceRoot, "skills") : "";
-      const sourceCustom = sourceRoot ? path.join(sourceRoot, "custom_skills") : "";
-      if (sourceSkills && sourceSkills !== BUILTIN_SKILLS_DIR && fs.existsSync(path.dirname(sourceSkills))) {
-        dirs.push(sourceSkills);
-      }
-      if (sourceCustom && sourceCustom !== CUSTOM_SKILLS_DIR && fs.existsSync(path.dirname(sourceCustom))) {
-        dirs.push(sourceCustom);
-      }
-    } catch (e) {
-      // Ignore unreadable source marker
-    }
+  const dirs = [BUILTIN_SKILLS_DIR];
+  if (CUSTOM_SKILLS_DIR && !dirs.includes(CUSTOM_SKILLS_DIR)) {
+    dirs.push(CUSTOM_SKILLS_DIR);
   }
   return dirs;
 }
@@ -953,6 +942,13 @@ function parseSkillfyJson(rawText, activeHost) {
     throw new Error("Could not extract actionable rules from the conversation.");
   }
 
+  const blueprint = anonymizeSkillText(
+    String(parsed.blueprint || parsed.mockup || parsed.wireframe || parsed.layout || "").trim()
+  );
+  const expectedSteps = Array.isArray(parsed.expectedSteps || parsed.steps)
+    ? (parsed.expectedSteps || parsed.steps).map((s) => anonymizeSkillText(String(s || "").trim())).filter(Boolean)
+    : [];
+
   const antiPattern = anonymizeSkillText(
     String(parsed.antiPattern || parsed.before || parsed.incorrect || "").trim()
   );
@@ -966,6 +962,8 @@ function parseSkillfyJson(rawText, activeHost) {
     description,
     hosts: Array.from(new Set(hosts)),
     alwaysActive,
+    blueprint,
+    expectedSteps,
     rules,
     antiPattern,
     goodPattern
@@ -1006,9 +1004,10 @@ async function handleSkillfyRequest({
     "Your mission: Analyze the user's corrections, complaints, and formatting preferences to distill a permanent, high-precision, completely generic skill.\n\n" +
     "CRITICAL GENERALIZATION & PRIVACY DIRECTIVES:\n" +
     "1. ZERO HARDCODED PERSONAL DATA OR SPECIFIC ENTITIES: NEVER include real candidate names, specific company or university names, real phone numbers, real emails, or personal profile URLs.\n" +
-    "2. GEOGRAPHIC & DOMAIN AGNOSTICISM: NEVER hardcode specific countries or cities (e.g., 'Spain', 'Lima', 'Peru', 'USA'). Formulate all rules generically (e.g., 'maintain uniform geographic and temporal granularity across all entries, such as [City, Region/Country] or [Location / Remote]'). The skill MUST apply universally to ANY user, ANY organization, ANY university, and ANY country in the world.\n" +
-    "3. ABSTRACT TYPOGRAPHIC & STRUCTURAL PRINCIPLES: Focus purely on document layout, hierarchy, dual-alignment (borderless full-width tables instead of typewriter tabs), spacing rhythm (spaceBefore/spaceAfter instead of repeated empty paragraphs), bullet hygiene (no doubled arrows or ghost bullets), and style consistency.\n" +
-    "4. ANONYMOUS GENERIC EXAMPLES: In antiPattern and goodPattern, use clean, anonymous placeholders (e.g. `[Organization / Institution]`, `[Location / Region]`, `[Role / Degree Title]`, `[Date Range]`) showing the structural defect versus the compliant layout without leaking or hardcoding private user data.\n\n" +
+    "2. GEOGRAPHIC & DOMAIN AGNOSTICISM: NEVER hardcode specific countries or cities. Formulate all rules generically (e.g., 'maintain uniform geographic granularity across all entries, such as [City, Region/Country]'). The skill MUST apply universally to ANY user, ANY organization, and ANY country.\n" +
+    "3. STRUCTURAL BLUEPRINT / MOCKUP: Always construct a clean ASCII wireframe/mockup illustrating the expected document or section layout flow (e.g. [Header] -> [Summary Table] -> [Visual Exhibit with Caption] -> [Narrative Analysis] -> [Technical Details]).\n" +
+    "4. ORDERED EXECUTION STEPS: Detail 3 to 6 sequential imperative operational steps required to achieve compliance (e.g., Step 1: Detect document coordinates, Step 2: Harmonize metrics, Step 3: Format elements, Step 4: Audit alignment).\n" +
+    "5. ANONYMOUS GENERIC EXAMPLES: In antiPattern and goodPattern, use clean, anonymous placeholders showing the defect versus the compliant layout.\n\n" +
     "Output ONLY valid JSON matching this schema:\n" +
     "{\n" +
     '  "id": "learned-kebab-case-slug",\n' +
@@ -1016,6 +1015,12 @@ async function handleSkillfyRequest({
     '  "description": "Universal one-sentence summary of when and how this skill applies to any document",\n' +
     `  "hosts": ["${activeHost}"],\n` +
     '  "alwaysActive": true,\n' +
+    '  "blueprint": "Structured ASCII wireframe / layout mockup showing the expected visual hierarchy",\n' +
+    '  "expectedSteps": [\n' +
+    '    "Step 1: Imperative operational step",\n' +
+    '    "Step 2: Imperative operational step",\n' +
+    '    "Step 3: Imperative operational step"\n' +
+    '  ],\n' +
     '  "rules": [\n' +
     '    "Universal imperative rule (what MUST be done, completely generic)",\n' +
     '    "Universal imperative rule (what MUST NEVER be done, completely generic)"\n' +
@@ -1048,8 +1053,18 @@ async function handleSkillfyRequest({
     `description: ${skill.description}\n` +
     `hosts: [${skill.hosts.join(", ")}]\n` +
     `alwaysActive: ${skill.alwaysActive}\n` +
-    `---\n\n` +
-    `## Rules\n` +
+    `---\n\n`;
+
+  if (skill.blueprint) {
+    markdownDoc += `## Expected Layout Blueprint / Mockup\n\n\`\`\`\n${skill.blueprint}\n\`\`\`\n\n`;
+  }
+
+  if (skill.expectedSteps && skill.expectedSteps.length > 0) {
+    markdownDoc += `## Expected Execution Steps\n\n` + skill.expectedSteps.map((s, idx) => `${idx + 1}. ${s}`).join("\n") + `\n\n`;
+  }
+
+  markdownDoc +=
+    `## Enforced Rules\n\n` +
     skill.rules.map((r) => `- ${r}`).join("\n") +
     `\n`;
 
@@ -1084,9 +1099,17 @@ async function handleSkillfyRequest({
 
   let reply =
     `🧠 **Skill Learned & Saved:** \`${skill.name}\` (\`${skill.id}.md\`)\n\n` +
-    `*${skill.description}*\n\n` +
-    `### 📋 Enforced Rules\n` +
-    skill.rules.map((r) => `- ${r}`).join("\n");
+    `*${skill.description}*\n\n`;
+
+  if (skill.blueprint) {
+    reply += `### 📐 Expected Layout Blueprint\n\`\`\`\n${skill.blueprint}\n\`\`\`\n\n`;
+  }
+
+  if (skill.expectedSteps && skill.expectedSteps.length > 0) {
+    reply += `### 🪜 Expected Steps\n` + skill.expectedSteps.map((s, idx) => `${idx + 1}. ${s}`).join("\n") + `\n\n`;
+  }
+
+  reply += `### 📋 Enforced Rules\n` + skill.rules.map((r) => `- ${r}`).join("\n");
 
   if (skill.antiPattern && skill.goodPattern) {
     reply +=
