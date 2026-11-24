@@ -561,6 +561,14 @@ ins.diff-ins {
   border-color: var(--text-muted);
 }
 
+.subtle-pill.has-selection {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.45);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
 .auto-pill {
   display: inline-flex;
   align-items: center;

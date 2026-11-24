@@ -359,7 +359,7 @@ function getHostOperationsSchema(host) {
     '- delete_text: {"type":"delete_text","target":"<exact text>","description":"..."}\n' +
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
-    '- update_chart: {"type":"update_chart","target":"<heading or text near chart>","series":[{"name":"MITIGADO","values":{"Crítico":0,"Alto":0,"Medio":1,"Bajo":1,"Informativo":0}},{"name":"VULNERABLE","values":{"Crítico":0,"Alto":0,"Medio":0,"Bajo":0,"Informativo":0}}],"description":"..."} -> Updates DrawingML OOXML chart values directly in Word without external files.\n' +
+    '- update_chart: {"type":"update_chart","target":"<heading or text near chart, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","series":[{"name":"MITIGADO","values":{"Crítico":0,"Alto":0,"Medio":1,"Bajo":1,"Informativo":0}},{"name":"VULNERABLE","values":{"Crítico":0,"Alto":0,"Medio":0,"Bajo":0,"Informativo":0}}],"description":"..."} -> Updates or transforms DrawingML OOXML chart type and values directly in Word. When user asks for circular or pie chart, specify "chartType":"pie" and populate series.\n' +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
@@ -397,7 +397,13 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
         "- BULLET ITEMS: In bulleted lists, never prefix list items with redundant bullet markers, dashes, or arrows (write `- Conducted penetration tests...`, NOT `- -> Conducted...` and NOT `- • Conducted...`). Never emit empty bullet items.\n" +
         "- EXHAUSTIVE DOCUMENT REVIEW: When the user asks to review or clean the whole document ('revisa todo', 'revisa formato y estructura'), you MUST audit EVERY section in [FULL_CONTEXT] (Header, Summary, Education, Experience, Certifications, Technical Skills, Honors & Awards). If any section has defects (missing bullets, unformatted awards, double arrows, residual tabs), emit operations for each defective section. NEVER claim in chat that you assigned bullets to certifications or awards unless your operations block actually includes the update for that section!\n" +
         "- LINE SPACING: Standard multiple line spacing is specified as a multiplier (e.g. 1.15 for 1.15x multiple, 1.5 for 1.5x multiple) in standardize_document and replace_full_document.\n" +
-        "- CHARTS & DRAWINGML MUTATION VIA OOXML: Charts in Word are DrawingML objects stored in OOXML (word/charts/chart1.xml). You can inspect or update existing charts via execute_office_js using Word's native OOXML bridge (p.getOoxml() and p.insertOoxml()) targeting <c:numCache> and <c:strCache>. If a chart contains an external workbook reference (<c:externalData>), strip that tag and its relationship before reinserting. NEVER claim Word cannot edit charts, and NEVER claim you need Python or external scripts.\n"
+        "- CHARTS & DRAWINGML MUTATION VIA OOXML: Charts in Word are DrawingML objects stored in OOXML (word/charts/chart1.xml). You can inspect or update existing charts via update_chart or execute_office_js using Word's native OOXML bridge (p.getOoxml() and p.insertOoxml()) targeting <c:numCache>, <c:strCache>, and <c:plotArea>. If a chart contains an external workbook reference (<c:externalData>), strip that tag and its relationship before reinserting. NEVER claim Word cannot edit charts, and NEVER claim you need Python or external scripts.\n" +
+        "- MANDATORY CHART ACTION PROTOCOL: If the user asks to change, format, re-shape, or transform a chart (e.g. 'cambia el gráfico', 'hazlo circular', 'pie chart', 'cambia la forma', 'actualiza datos', 'ponlo en columnas', 'ponlo de barras'):\n" +
+        "  1. You MUST ALWAYS append the ```json:operations``` block containing an `update_chart` operation.\n" +
+        "  2. Set `chartType: \"pie\"` (or \"doughnut\", \"column\", \"bar\", \"line\" as requested).\n" +
+        "  3. Set `series` with the exact categories and quantities from the document (e.g. MITIGADO: Media=1, Baja=1; VULNERABLE: 0).\n" +
+        "  4. If [SELECTED_CONTEXT] indicates a chart is selected ([SELECTED_CHART: ...]), set `\"target\": \"\"` to update the selected chart directly.\n" +
+        "  5. NEVER say in your text reply that you changed or updated the chart (e.g. 'He actualizado el tipo de gráfico a circular...') without actually appending the update_chart operation in the exact same turn!\n"
       : "";
 
   const excelRules =
@@ -565,7 +571,7 @@ function buildContextPayload({
 
   if (Array.isArray(documentOutline) && documentOutline.length > 0) {
     const outlineLines = documentOutline
-      .slice(0, 40)
+      .slice(0, 500)
       .map((item) => `[#${item.index}${item.style ? "|" + item.style : ""}] ${item.text}`)
       .join("\n");
     sections.push(`[DOCUMENT_OUTLINE]\n${outlineLines}\n[/DOCUMENT_OUTLINE]`);
