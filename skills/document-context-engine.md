@@ -78,12 +78,48 @@ Users frequently issue relative or deictic commands that depend heavily on conve
 
 ---
 
-## 4. Expected Operational Steps (Universal Workflow)
+## 4. Visual Exhibit Semantics, Metric Selection & Context-Driven Color Protocols
+
+Visual exhibits (charts, graphs, matrices) are not mere cosmetic decorations; they are high-impact cognitive instruments that synthesize business reality for executive decision-makers.
+
+### 4.1 Metric Dimension Selection (Status vs. Severity)
+When designing or converting a visual exhibit, the engine must analyze the document's primary business question:
+
+1. **Audit / Recertification / Remediation Context**:
+   - **Primary Business Question**: *"Did the remediation succeed? Are there remaining active risks?"*
+   - **Governing Executive Metric**: Remediation Status (e.g., `MITIGADO: 100% (2/2)`, `VULNERABLE: 0%`).
+   - **Common Pitfall to Avoid**: Slicing an executive pie chart simply by original severity (e.g., `50% Media`, `50% Baja`) without indicating mitigation status misleads executives into believing that half the system remains vulnerable.
+   - **Resolution**:
+     - *Approach A (Status Breakdown)*: Chart the remediation status as the primary slices (`MITIGADO` vs `VULNERABLE`).
+     - *Approach B (Mitigated Severity Breakdown)*: If showing severities in a recertification report, explicitly qualify each category (e.g., `Media (Mitigada): 1`, `Baja (Mitigada): 1`) so status is unambiguous.
+     - *Approach C (Stacked Bar Matrix)*: Use stacked bars with categories = Severities and series = `[MITIGADO, VULNERABLE]` showing both dimensions simultaneously.
+
+2. **Initial Assessment / Pentest / Threat Model Context**:
+   - **Primary Business Question**: *"What vulnerabilities were found, and what is the severity profile?"*
+   - **Governing Executive Metric**: Severity Distribution (`CRÍTICA`, `ALTA`, `MEDIA`, `BAJA`, `INFORMATIVA`).
+
+### 4.2 Context-Driven Color Resolution & Brand Palette Hierarchy
+Colors must NEVER be hardcoded in engine logic. They must be resolved dynamically through the following hierarchy:
+
+1. **Tier 1: Active Custom Skills (`[ACTIVE_SKILLS]`)**:
+   - Always extract exact corporate hex codes defined in the active skills (e.g., `formato-informe-bch-v2` specifies `MITIGADO: #92D050`, `VULNERABLE: #FF0000`, `CRÍTICO: #501549`, `MEDIO: #FFC000`, `BAJO: #4EA72E`, `INFORMATIVO: #0F9ED5`).
+   - Pass these mapped hex values directly into `update_chart` via `colors: { "CategoryOrSeries": "#HEX" }`.
+
+2. **Tier 2: Explicit User Instruction**:
+   - If the user requests specific colors (e.g., *"usa azul y naranja"*, *"pon el mitigado en verde oscuro"*), respect user specifications over defaults.
+
+3. **Tier 3: Contextual Query or Universal Professional Palette**:
+   - If neither custom skills nor document context provide a color palette, and the visual distinction is critical, **ask the user** what corporate colors they prefer, or apply standard neutral corporate palettes (`#2563EB`, `#10B981`, `#F59E0B`, `#EF4444`) and mention the color scheme in the chat reply.
+
+---
+
+## 5. Expected Operational Steps (Universal Workflow)
 
 When executing any contextual document edit:
 
 - **Step 1: Context Ingestion**: Read the active selection, surrounding paragraphs (±3 siblings), and the section heading to determine exact document coordinates.
 - **Step 2: Intent Resolution**: Check if the command is an initial creation, a surgical refinement, or a format alternation/reversion.
-- **Step 3: Data Integrity Audit**: Verify that numbers and categories match the governing table or source data.
-- **Step 4: Surgical Execution**: Issue the appropriate operation (`update_chart`, `replace_section`, `search_and_replace`, `format_selection`) targeting only the affected element.
-- **Step 5: Post-Edit Harmonization**: Ensure that formatting (alignment, font, margins, captions) remains pristine and harmonious with the rest of the document.
+- **Step 3: Semantic Metric Audit**: Identify the primary metric dimension (Status vs Severity) and verify that numbers match the governing table.
+- **Step 4: Palette Resolution**: Extract color mappings from `[ACTIVE_SKILLS]` or document styles and map them into `op.colors`.
+- **Step 5: Surgical Execution**: Issue the appropriate operation (`update_chart`, `replace_section`, `search_and_replace`, `format_selection`) targeting only the affected element.
+- **Step 6: Post-Edit Harmonization**: Ensure that formatting (alignment, font, margins, captions) remains pristine and harmonious with the rest of the document.

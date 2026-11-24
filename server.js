@@ -348,7 +348,7 @@ function getHostOperationsSchema(host) {
     '- delete_text: {"type":"delete_text","target":"<exact text>","description":"..."}\n' +
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
-    '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories (e.g. quarters, products, countries, metrics) and numeric series values.\n' +
+    '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"colors":{"CategoryOrSeries":"#HEX"},"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories, numeric series values, and custom colors.\n' +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
@@ -391,8 +391,12 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
         "  1. You MUST ALWAYS append the ```json:operations``` block containing an `update_chart` operation.\n" +
         "  2. Set `chartType: \"pie\"` (or \"doughnut\", \"column\", \"bar\", \"line\" as requested).\n" +
         "  3. Set `categories` and `series` with the exact categories and quantities from the document context or user request (e.g. categories: [\"Q1\", \"Q2\", ...], series: [{ name: \"Revenue\", values: [100, 200, ...] }]). For single-series pie charts, pass the slice labels in categories and slice counts in series[0].values.\n" +
-        "  4. If [SELECTED_CONTEXT] indicates a chart is selected ([SELECTED_CHART: ...]), set `\"target\": \"\"` to update the selected chart directly.\n" +
-        "  5. NEVER say in your text reply that you changed or updated the chart without actually appending the update_chart operation in the exact same turn!\n"
+        "  4. CONTEXT-DRIVEN COLORS & ACTIVE SKILLS: Inspect [ACTIVE_SKILLS] and document context for corporate color schemes (e.g. status colors like MITIGADO #92D050, VULNERABLE #FF0000; or severity colors like CRÍTICO #501549, ALTO #FF0000, MEDIO #FFC000, BAJO #4EA72E). If colors are defined in an active skill or requested by the user, pass them in `colors: { \"CategoryOrSeriesName\": \"#HEX\" }` within `update_chart`. If no color scheme is provided by any active skill or context, ask the user for their preferred brand colors or use standard professional harmonic tones.\n" +
+        "  5. VISUAL EXHIBIT SEMANTICS & METRIC DIMENSION: In executive summaries or status reports, always align the chart metric with the document's primary business question:\n" +
+        "     - In Recertification / Audit reports, the executive metric is remediation status (e.g. 100% Mitigado vs 0% Vulnerable). Slicing a pie chart by severity when all findings are mitigated misleads stakeholders into thinking vulnerabilities remain active! If showing severities in a recertification, explicitly reflect mitigation (e.g. 'Media (Mitigada)' #FFC000, 'Baja (Mitigada)' #4EA72E) or chart status breakdown ('MITIGADO' 100% #92D050, 'VULNERABLE' 0% #FF0000).\n" +
+        "     - Never invent hardcoded domain logic: derive categories, series, and values strictly from the governing summary table and active skills.\n" +
+        "  6. If [SELECTED_CONTEXT] indicates a chart is selected ([SELECTED_CHART: ...]), set `\"target\": \"\"` to update the selected chart directly.\n" +
+        "  7. NEVER say in your text reply that you changed or updated the chart without actually appending the update_chart operation in the exact same turn!\n"
       : "";
 
   const excelRules =

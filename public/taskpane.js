@@ -2334,6 +2334,36 @@ const UNIVERSAL_CHART_PALETTE = [
   "F97316"  // Orange
 ];
 
+function cleanHex(color) {
+  if (!color) return "2563EB";
+  return String(color).replace(/^#/, "").trim().toUpperCase();
+}
+
+function resolveChartColor(name, index, options = {}, ser = {}) {
+  // 1. Direct color explicitly specified on series or item
+  if (ser && ser.color) return cleanHex(ser.color);
+  if (ser && Array.isArray(ser.colors) && ser.colors[index]) return cleanHex(ser.colors[index]);
+  if (ser && ser.colors && typeof ser.colors === "object" && ser.colors[name]) return cleanHex(ser.colors[name]);
+
+  // 2. Options-level color mapping provided by skills / LLM / user
+  if (options && options.colors) {
+    if (typeof options.colors === "object" && !Array.isArray(options.colors)) {
+      const normName = String(name || "").trim().toLowerCase();
+      for (const [k, v] of Object.entries(options.colors)) {
+        if (k.trim().toLowerCase() === normName) return cleanHex(v);
+      }
+      for (const [k, v] of Object.entries(options.colors)) {
+        if (normName.includes(k.trim().toLowerCase())) return cleanHex(v);
+      }
+    } else if (Array.isArray(options.colors) && options.colors[index]) {
+      return cleanHex(options.colors[index]);
+    }
+  }
+
+  // 3. Fallback to dynamic corporate palette
+  return getDynamicChartColor(name, index);
+}
+
 function getDynamicChartColor(name, index) {
   const norm = String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (norm.includes("crit") || norm.includes("vulnerab") || norm.includes("fail") || norm.includes("error") || norm.includes("danger") || norm.includes("red")) {
@@ -2444,13 +2474,13 @@ function generateNativeChartFlatOpc(options = {}) {
     const items = categories.map((cat, idx) => ({
       cat,
       val: firstSer.values[idx] || 0,
-      color: getDynamicChartColor(cat, idx)
+      color: resolveChartColor(cat, idx, options, firstSer)
     })).filter(it => it.val > 0);
 
     const renderItems = items.length > 0 ? items : categories.map((cat, idx) => ({
       cat,
       val: firstSer.values[idx] || 1,
-      color: getDynamicChartColor(cat, idx)
+      color: resolveChartColor(cat, idx, options, firstSer)
     }));
 
     const catPoints = renderItems.map((it, idx) => `<c:pt idx="${idx}"><c:v>${escapeHtml(it.cat)}</c:v></c:pt>`).join("\n                      ");
@@ -2487,9 +2517,10 @@ function generateNativeChartFlatOpc(options = {}) {
                 </c:val>${dPtBlocks}
               </c:ser>
               <c:dLbls>
-                <c:showVal val="1"/>
+                <c:showVal val="0"/>
                 <c:showPercent val="1"/>
-                <c:showCatName val="0"/>
+                <c:showCatName val="1"/>
+                <c:showSerName val="0"/>
                 <c:showLegendKey val="0"/>
               </c:dLbls>
             </c:pieChart>`;
@@ -2519,7 +2550,7 @@ function generateNativeChartFlatOpc(options = {}) {
     const maxValRounded = Math.ceil(maxVal * 1.15) || 2;
 
     const seriesBlocks = series.map((ser, serIdx) => {
-      const serColor = getDynamicChartColor(ser.name, serIdx);
+      const serColor = resolveChartColor(ser.name, serIdx, options, ser);
       const catPoints = categories.map((cat, cIdx) => `<c:pt idx="${cIdx}"><c:v>${escapeHtml(cat)}</c:v></c:pt>`).join("\n                      ");
       const valPoints = categories.map((_, cIdx) => `<c:pt idx="${cIdx}"><c:v>${ser.values[cIdx] || 0}</c:v></c:pt>`).join("\n                      ");
 
@@ -2721,13 +2752,13 @@ function generateCorporateChartBase64(options = {}) {
     const items = categories.map((cat, idx) => ({
       label: cat,
       val: firstSer.values[idx] || 0,
-      color: "#" + getDynamicChartColor(cat, idx)
+      color: "#" + resolveChartColor(cat, idx, options, firstSer)
     })).filter(it => it.val > 0);
 
     const renderItems = items.length > 0 ? items : categories.map((cat, idx) => ({
       label: cat,
       val: firstSer.values[idx] || 1,
-      color: "#" + getDynamicChartColor(cat, idx)
+      color: "#" + resolveChartColor(cat, idx, options, firstSer)
     }));
 
     const total = renderItems.reduce((s, it) => s + it.val, 0) || 1;
@@ -2854,7 +2885,7 @@ function generateCorporateChartBase64(options = {}) {
       for (let sIdx = 0; sIdx < series.length; sIdx++) {
         const ser = series[sIdx];
         const val = ser.values[cIdx] || 0;
-        const color = "#" + getDynamicChartColor(ser.name, sIdx);
+        const color = "#" + resolveChartColor(ser.name, sIdx, options, ser);
         const yPos = startY + sIdx * barHeight;
 
         // Background track
@@ -2889,7 +2920,7 @@ function generateCorporateChartBase64(options = {}) {
       const legY = H - 55;
       for (let sIdx = 0; sIdx < series.length; sIdx++) {
         const ser = series[sIdx];
-        const color = "#" + getDynamicChartColor(ser.name, sIdx);
+        const color = "#" + resolveChartColor(ser.name, sIdx, options, ser);
 
         drawCanvasRoundedRect(ctx, legX, legY, 18, 18, 3);
         ctx.fillStyle = color;
@@ -2978,23 +3009,7 @@ async function handleWordChartUpdate(context, op) {
       }
     }
 
-    // 3. Search for preceding caption in document: "El gráfico siguiente muestra" -> target next paragraph
-    if (!targetParagraph) {
-      try {
-        const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
-        if (captionResults.length > 0) {
-          const captionP = captionResults[0].paragraphs.getFirst();
-          try {
-            const nextP = captionP.getNext();
-            nextP.load("text");
-            await context.sync();
-            targetParagraph = nextP;
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-
-    // 4. Search for any existing inlinePictures in body (e.g. if chart graphic already exists)
+    // 3. Search for existing visual exhibit in document (inlinePictures)
     if (!targetParagraph) {
       try {
         const pics = context.document.body.inlinePictures;
@@ -3008,20 +3023,59 @@ async function handleWordChartUpdate(context, op) {
       } catch (_) {}
     }
 
-    // 5. Search for paragraph right before "El análisis evidencia el nivel de avance"
+    // 4. Universal Caption Search (multilingual: chart, gráfico, figure, exhibit) -> target following paragraph
     if (!targetParagraph) {
-      try {
-        const nextResults = await searchRangesInBody(context, "El análisis evidencia el nivel de avance", false);
-        if (nextResults.length > 0) {
-          const followingP = nextResults[0].paragraphs.getFirst();
-          try {
-            const prevP = followingP.getPrevious();
-            prevP.load("text");
-            await context.sync();
-            targetParagraph = prevP;
-          } catch (_) {}
-        }
-      } catch (_) {}
+      const captionStems = [
+        "El gráfico siguiente muestra",
+        "gráfico siguiente",
+        "following chart",
+        "chart below",
+        "gráfico abaixo",
+        "figure",
+        "exhibit"
+      ];
+      for (const stem of captionStems) {
+        try {
+          const captionResults = await searchRangesInBody(context, stem, false);
+          if (captionResults.length > 0) {
+            const captionP = captionResults[0].paragraphs.getFirst();
+            try {
+              const nextP = captionP.getNext();
+              nextP.load("text");
+              await context.sync();
+              targetParagraph = nextP;
+            } catch (_) {
+              targetParagraph = captionP;
+            }
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 5. Search for succeeding analysis paragraph -> target previous paragraph
+    if (!targetParagraph) {
+      const narrativeStems = [
+        "El análisis evidencia",
+        "analysis indicates",
+        "analysis shows",
+        "conclusión"
+      ];
+      for (const stem of narrativeStems) {
+        try {
+          const nextResults = await searchRangesInBody(context, stem, false);
+          if (nextResults.length > 0) {
+            const followingP = nextResults[0].paragraphs.getFirst();
+            try {
+              const prevP = followingP.getPrevious();
+              prevP.load("text");
+              await context.sync();
+              targetParagraph = prevP;
+            } catch (_) {}
+            break;
+          }
+        } catch (_) {}
+      }
     }
 
     if (!targetParagraph) {
@@ -3059,7 +3113,8 @@ async function handleWordChartUpdate(context, op) {
         series: op.series,
         categories: op.categories,
         data: op.data,
-        values: op.values
+        values: op.values,
+        colors: op.colors
       });
 
       targetParagraph.insertOoxml(flatOpc, Word.InsertLocation.replace);
@@ -3078,6 +3133,7 @@ async function handleWordChartUpdate(context, op) {
         categories: op.categories,
         data: op.data,
         values: op.values,
+        colors: op.colors,
         subtitle: op.subtitle || op.summary || ""
       });
 
