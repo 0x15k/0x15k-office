@@ -2321,6 +2321,294 @@ function drawCanvasRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+function generateNativeChartFlatOpc(options = {}) {
+  const chartType = String(options.chartType || options.type || "pie").toLowerCase();
+  const title = options.title || "Distribución de Severidad de Vulnerabilidades";
+  const isPie =
+    (chartType.includes("pie") ||
+    chartType.includes("circular") ||
+    chartType.includes("torta") ||
+    chartType.includes("pastel") ||
+    chartType.includes("doughnut") ||
+    chartType.includes("anillo")) &&
+    !chartType.includes("barra") &&
+    !chartType.includes("bar") &&
+    !chartType.includes("colum");
+
+  let plotContent = "";
+  let legendBlock = "";
+
+  if (isPie) {
+    let mediaVal = 1;
+    let bajaVal = 1;
+    if (Array.isArray(options.series)) {
+      for (const ser of options.series) {
+        const vals = ser.values || {};
+        if (typeof vals === "object" && !Array.isArray(vals)) {
+          for (const [k, v] of Object.entries(vals)) {
+            const num = Number(v) || 0;
+            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (kNorm.includes("MED")) mediaVal = num;
+            else if (kNorm.includes("BAJ")) bajaVal = num;
+          }
+        }
+      }
+    }
+
+    plotContent = `
+            <c:pieChart>
+              <c:varyColors val="1"/>
+              <c:ser>
+                <c:idx val="0"/>
+                <c:order val="0"/>
+                <c:tx><c:v>${escapeHtml(title)}</c:v></c:tx>
+                <c:cat>
+                  <c:strRef>
+                    <c:strCache>
+                      <c:ptCount val="2"/>
+                      <c:pt idx="0"><c:v>Media (MITIGADO)</c:v></c:pt>
+                      <c:pt idx="1"><c:v>Baja (MITIGADO)</c:v></c:pt>
+                    </c:strCache>
+                  </c:strRef>
+                </c:cat>
+                <c:val>
+                  <c:numRef>
+                    <c:numCache>
+                      <c:formatCode>General</c:formatCode>
+                      <c:ptCount val="2"/>
+                      <c:pt idx="0"><c:v>${mediaVal}</c:v></c:pt>
+                      <c:pt idx="1"><c:v>${bajaVal}</c:v></c:pt>
+                    </c:numCache>
+                  </c:numRef>
+                </c:val>
+                <c:dPt>
+                  <c:idx val="0"/>
+                  <c:spPr><a:solidFill><a:srgbClr val="FFC000"/></a:solidFill></c:spPr>
+                </c:dPt>
+                <c:dPt>
+                  <c:idx val="1"/>
+                  <c:spPr><a:solidFill><a:srgbClr val="548235"/></a:solidFill></c:spPr>
+                </c:dPt>
+              </c:ser>
+              <c:dLbls>
+                <c:showVal val="1"/>
+                <c:showPercent val="1"/>
+                <c:showCatName val="0"/>
+                <c:showLegendKey val="0"/>
+              </c:dLbls>
+            </c:pieChart>`;
+
+    legendBlock = `
+          <c:legend>
+            <c:legendPos val="r"/>
+            <c:overlay val="0"/>
+          </c:legend>`;
+  } else {
+    let mediaVal = 1;
+    let bajaVal = 1;
+    if (Array.isArray(options.series)) {
+      for (const ser of options.series) {
+        const sName = (ser.name || "").toUpperCase();
+        const vals = ser.values || {};
+        if (typeof vals === "object" && !Array.isArray(vals)) {
+          for (const [k, v] of Object.entries(vals)) {
+            const num = Number(v) || 0;
+            const kNorm = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            if (sName.includes("MITIGADO")) {
+              if (kNorm.includes("MED")) mediaVal = num;
+              else if (kNorm.includes("BAJ")) bajaVal = num;
+            }
+          }
+        }
+      }
+    }
+
+    plotContent = `
+            <c:barChart>
+              <c:barDir val="bar"/>
+              <c:grouping val="stacked"/>
+              <c:varyColors val="0"/>
+              <c:ser>
+                <c:idx val="0"/>
+                <c:order val="0"/>
+                <c:tx><c:v>MITIGADO</c:v></c:tx>
+                <c:spPr><a:solidFill><a:srgbClr val="548235"/></a:solidFill></c:spPr>
+                <c:cat>
+                  <c:strRef>
+                    <c:strCache>
+                      <c:ptCount val="5"/>
+                      <c:pt idx="0"><c:v>INFORMATIVA</c:v></c:pt>
+                      <c:pt idx="1"><c:v>BAJA</c:v></c:pt>
+                      <c:pt idx="2"><c:v>MEDIA</c:v></c:pt>
+                      <c:pt idx="3"><c:v>ALTA</c:v></c:pt>
+                      <c:pt idx="4"><c:v>CRÍTICA</c:v></c:pt>
+                    </c:strCache>
+                  </c:strRef>
+                </c:cat>
+                <c:val>
+                  <c:numRef>
+                    <c:numCache>
+                      <c:formatCode>General</c:formatCode>
+                      <c:ptCount val="5"/>
+                      <c:pt idx="0"><c:v>0</c:v></c:pt>
+                      <c:pt idx="1"><c:v>${bajaVal}</c:v></c:pt>
+                      <c:pt idx="2"><c:v>${mediaVal}</c:v></c:pt>
+                      <c:pt idx="3"><c:v>0</c:v></c:pt>
+                      <c:pt idx="4"><c:v>0</c:v></c:pt>
+                    </c:numCache>
+                  </c:numRef>
+                </c:val>
+              </c:ser>
+              <c:ser>
+                <c:idx val="1"/>
+                <c:order val="1"/>
+                <c:tx><c:v>VULNERABLE</c:v></c:tx>
+                <c:spPr><a:solidFill><a:srgbClr val="C00000"/></a:solidFill></c:spPr>
+                <c:cat>
+                  <c:strRef>
+                    <c:strCache>
+                      <c:ptCount val="5"/>
+                      <c:pt idx="0"><c:v>INFORMATIVA</c:v></c:pt>
+                      <c:pt idx="1"><c:v>BAJA</c:v></c:pt>
+                      <c:pt idx="2"><c:v>MEDIA</c:v></c:pt>
+                      <c:pt idx="3"><c:v>ALTA</c:v></c:pt>
+                      <c:pt idx="4"><c:v>CRÍTICA</c:v></c:pt>
+                    </c:strCache>
+                  </c:strRef>
+                </c:cat>
+                <c:val>
+                  <c:numRef>
+                    <c:numCache>
+                      <c:formatCode>General</c:formatCode>
+                      <c:ptCount val="5"/>
+                      <c:pt idx="0"><c:v>0</c:v></c:pt>
+                      <c:pt idx="1"><c:v>0</c:v></c:pt>
+                      <c:pt idx="2"><c:v>0</c:v></c:pt>
+                      <c:pt idx="3"><c:v>0</c:v></c:pt>
+                      <c:pt idx="4"><c:v>0</c:v></c:pt>
+                    </c:numCache>
+                  </c:numRef>
+                </c:val>
+              </c:ser>
+              <c:dLbls><c:showVal val="1"/><c:showPercent val="0"/></c:dLbls>
+              <c:gapWidth val="150"/>
+              <c:overlap val="100"/>
+              <c:axId val="158996624"/>
+              <c:axId val="158999504"/>
+            </c:barChart>
+            <c:catAx>
+              <c:axId val="158996624"/>
+              <c:scaling><c:orientation val="minMax"/></c:scaling>
+              <c:delete val="0"/><c:axPos val="l"/>
+              <c:tickLblPos val="nextTo"/>
+              <c:crossAx val="158999504"/>
+              <c:crosses val="autoZero"/>
+            </c:catAx>
+            <c:valAx>
+              <c:axId val="158999504"/>
+              <c:scaling><c:orientation val="minMax"/><c:max val="2"/></c:scaling>
+              <c:delete val="0"/><c:axPos val="b"/>
+              <c:majorGridlines/>
+              <c:crossAx val="158996624"/>
+              <c:crosses val="autoZero"/>
+              <c:crossBetween val="between"/>
+              <c:majorUnit val="1"/>
+            </c:valAx>`;
+
+    legendBlock = `
+          <c:legend>
+            <c:legendPos val="b"/>
+            <c:overlay val="0"/>
+          </c:legend>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<?mso-application progid="Word.Document"?>
+<pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">
+  <pkg:part pkg:name="/_rels/.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml">
+    <pkg:xmlData>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+      </Relationships>
+    </pkg:xmlData>
+  </pkg:part>
+
+  <pkg:part pkg:name="/word/_rels/document.xml.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml">
+    <pkg:xmlData>
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+        <Relationship Id="rIdChart1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/>
+      </Relationships>
+    </pkg:xmlData>
+  </pkg:part>
+
+  <pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">
+    <pkg:xmlData>
+      <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                  xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">
+        <w:body>
+          <w:p>
+            <w:pPr><w:jc w:val="center"/></w:pPr>
+            <w:r>
+              <w:drawing>
+                <wp:inline distT="0" distB="0" distL="0" distR="0">
+                  <wp:extent cx="5731510" cy="2565755"/>
+                  <wp:effectExtent l="0" t="0" r="0" b="0"/>
+                  <wp:docPr id="1" name="Chart 1"/>
+                  <wp:cNvGraphicFramePr/>
+                  <a:graphic>
+                    <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+                      <c:chart r:id="rIdChart1"/>
+                    </a:graphicData>
+                  </a:graphic>
+                </wp:inline>
+              </w:drawing>
+            </w:r>
+          </w:p>
+        </w:body>
+      </w:document>
+    </pkg:xmlData>
+  </pkg:part>
+
+  <pkg:part pkg:name="/word/charts/chart1.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml">
+    <pkg:xmlData>
+      <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+                    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                    xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <c:date1904 val="0"/>
+        <c:lang val="es-CL"/>
+        <c:roundedCorners val="0"/>
+        <c:chart>
+          <c:title>
+            <c:tx>
+              <c:rich>
+                <a:bodyPr/>
+                <a:lstStyle/>
+                <a:p>
+                  <a:r>
+                    <a:rPr b="1" sz="1200"/>
+                    <a:t>${escapeHtml(title)}</a:t>
+                  </a:r>
+                </a:p>
+              </c:rich>
+            </c:tx>
+            <c:layout/>
+          </c:title>
+          <c:plotArea>
+            <c:layout/>
+            ${plotContent}
+          </c:plotArea>
+          ${legendBlock}
+          <c:plotVisOnly val="1"/>
+        </c:chart>
+      </c:chartSpace>
+    </pkg:xmlData>
+  </pkg:part>
+</pkg:package>`;
+}
+
 function generateCorporateChartBase64(options = {}) {
   const chartType = String(options.chartType || options.type || "pie").toLowerCase();
   const title = options.title || "Distribución de Vulnerabilidades";
@@ -2715,12 +3003,12 @@ async function handleWordChartUpdate(context, op) {
         const captionResults = await searchRangesInBody(context, "El gráfico siguiente muestra", false);
         if (captionResults.length > 0) {
           const captionP = captionResults[0].paragraphs.getFirst();
-          const nextP = captionP.getNextOrNullObject();
-          nextP.load("isNullObject");
-          await context.sync();
-          if (!nextP.isNullObject) {
+          try {
+            const nextP = captionP.getNext();
+            nextP.load("text");
+            await context.sync();
             targetParagraph = nextP;
-          }
+          } catch (_) {}
         }
       } catch (_) {}
     }
@@ -2733,6 +3021,8 @@ async function handleWordChartUpdate(context, op) {
         await context.sync();
         if (pics.items && pics.items.length > 0) {
           targetParagraph = pics.items[0].paragraph;
+          targetParagraph.load("text");
+          await context.sync();
         }
       } catch (_) {}
     }
@@ -2743,12 +3033,12 @@ async function handleWordChartUpdate(context, op) {
         const nextResults = await searchRangesInBody(context, "El análisis evidencia el nivel de avance", false);
         if (nextResults.length > 0) {
           const followingP = nextResults[0].paragraphs.getFirst();
-          const prevP = followingP.getPreviousOrNullObject();
-          prevP.load("isNullObject");
-          await context.sync();
-          if (!prevP.isNullObject) {
+          try {
+            const prevP = followingP.getPrevious();
+            prevP.load("text");
+            await context.sync();
             targetParagraph = prevP;
-          }
+          } catch (_) {}
         }
       } catch (_) {}
     }
@@ -2780,25 +3070,47 @@ async function handleWordChartUpdate(context, op) {
       await context.sync();
     } catch (_) {}
 
-    // Generate high-resolution base64 PNG graphic using HTML5 Canvas
-    const base64Png = generateCorporateChartBase64({
-      chartType: isPie ? "doughnut" : "bar",
-      title: op.title || "Distribución de Severidad de Vulnerabilidades",
-      series: op.series || [
-        { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
-        { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
-      ],
-      categories: op.categories || ["Media", "Baja"]
-    });
+    // Priority 1: Native Flat OPC OOXML (triggers native Chart Design & Format ribbon tabs)
+    try {
+      const flatOpc = generateNativeChartFlatOpc({
+        chartType: isPie ? "pie" : "bar",
+        title: op.title || "Distribución de Severidad de Vulnerabilidades",
+        series: op.series || [
+          { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
+          { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
+        ],
+        categories: op.categories || (isPie ? ["Media (MITIGADO)", "Baja (MITIGADO)"] : ["INFORMATIVA", "BAJA", "MEDIA", "ALTA", "CRÍTICA"])
+      });
 
-    // Replace target paragraph content with the high-resolution corporate chart image
-    const pic = targetParagraph.insertInlinePictureFromBase64(base64Png, Word.InsertLocation.replace);
-    pic.width = 450;
-    pic.height = 230;
-    targetParagraph.alignment = Word.Alignment.centered;
-    await context.sync();
+      targetParagraph.insertOoxml(flatOpc, Word.InsertLocation.replace);
+      await context.sync();
+      return { applied: 1, detail: `Inserted native Word DrawingML ${isPie ? "pie" : "bar"} chart (Chart Design active)` };
+    } catch (opcErr) {
+      console.warn("Flat OPC native chart insertion failed, falling back to Retina image:", opcErr);
+    }
 
-    return { applied: 1, detail: `Inserted high-definition corporate ${isPie ? "pie" : "bar"} chart graphic` };
+    // Priority 2 Fallback: High-resolution Canvas 2x Retina PNG graphic
+    try {
+      const base64Png = generateCorporateChartBase64({
+        chartType: isPie ? "doughnut" : "bar",
+        title: op.title || "Distribución de Severidad de Vulnerabilidades",
+        series: op.series || [
+          { name: "MITIGADO", values: { Media: 1, Baja: 1 } },
+          { name: "VULNERABLE", values: { Crítica: 0, Alta: 0 } }
+        ],
+        categories: op.categories || ["Media", "Baja"]
+      });
+
+      const pic = targetParagraph.insertInlinePictureFromBase64(base64Png, Word.InsertLocation.replace);
+      pic.width = 450;
+      pic.height = 230;
+      targetParagraph.alignment = Word.Alignment.centered;
+      await context.sync();
+
+      return { applied: 1, detail: `Inserted corporate ${isPie ? "pie" : "bar"} chart image` };
+    } catch (imgErr) {
+      return { applied: 0, detail: "Chart fallback error: " + imgErr.message };
+    }
   } catch (err) {
     return { applied: 0, detail: "Chart update error: " + err.message };
   }
