@@ -1,5 +1,5 @@
 /**
- * 0x15k Office AI for Microsoft Office (v4.4.2)
+ * 0x15k Office AI for Microsoft Office (v4.5.0)
  * Multi-Host Engine (Word, Excel, PowerPoint), Minimalist UI, Redline Diff & Undo
  */
 
@@ -735,20 +735,21 @@ async function readActiveHostFullContext() {
         state.fullDocText = textWithLinks;
 
         state.documentOutline = (paragraphs.items || [])
-          .slice(0, 60)
+          .slice(0, 500)
           .map((p, idx) => {
             const pText = (p.text || "").trim();
             let flag = "";
             if (p.isListItem) flag = " (List)";
             else if (/\s\|\s/.test(pText)) flag = " (DualSplit)";
             else if (p.alignment && /center/i.test(String(p.alignment))) flag = " (Centered)";
+            else if (/gr[áa]fico|chart|figura/i.test(pText)) flag = " (ChartRef)";
             return {
               index: idx,
               style: String(p.style || "Normal").replace(/^Normal\b.*/i, "Normal") + flag,
               isListItem: !!p.isListItem,
               alignment: p.alignment ? String(p.alignment) : "Left",
               leftIndent: typeof p.leftIndent === "number" ? Math.round(p.leftIndent) : 0,
-              text: pText.slice(0, 80)
+              text: pText.slice(0, 100)
             };
           })
           .filter((item) => item.text.length > 0);
@@ -2220,6 +2221,88 @@ async function executeWordOperationInContext(context, op, shouldTrack, batchHasS
       await context.sync();
       return { applied: targets.length, detail: "Deleted" };
     }
+    case "update_chart": {
+      try {
+        const targetQuery = op.target || "gráfico";
+        const targets = await searchRangesInBody(context, targetQuery, false);
+        let targetParagraph = null;
+
+        if (targets.length > 0) {
+          const parentP = targets[0].paragraphs.getFirst();
+          parentP.load("text");
+          await context.sync();
+
+          let candidate = parentP;
+          for (let i = 0; i < 5 && candidate && !candidate.isNullObject; i++) {
+            const ooxml = candidate.getOoxml();
+            await context.sync();
+            if (ooxml.value && (ooxml.value.includes("<c:chartSpace") || ooxml.value.includes("word/charts/chart"))) {
+              targetParagraph = candidate;
+              break;
+            }
+            candidate = candidate.getNextOrNullObject();
+            if (candidate) candidate.load("text");
+            await context.sync();
+          }
+        }
+
+        if (!targetParagraph) {
+          const bodyParagraphs = context.document.body.paragraphs;
+          bodyParagraphs.load("items/text");
+          await context.sync();
+          for (const bp of (bodyParagraphs.items || [])) {
+            const ooxml = bp.getOoxml();
+            await context.sync();
+            if (ooxml.value && (ooxml.value.includes("<c:chartSpace") || ooxml.value.includes("word/charts/chart"))) {
+              targetParagraph = bp;
+              break;
+            }
+          }
+        }
+
+        if (!targetParagraph) {
+          return { applied: 0, detail: "Chart drawing object not found in document" };
+        }
+
+        const rawOoxml = targetParagraph.getOoxml();
+        await context.sync();
+        let xml = rawOoxml.value || "";
+
+        // 1. Strip externalData and any broken link to external Excel sheets (e.g. Libro1.xlsx)
+        xml = xml.replace(/<c:externalData[^>]*>[\s\S]*?<\/c:externalData>/gi, "");
+        xml = xml.replace(/<Relationship[^>]*TargetMode="External"[^>]*\/>/gi, "");
+
+        // 2. Update series values in <c:numCache>
+        if (Array.isArray(op.series)) {
+          for (const ser of op.series) {
+            const serName = (ser.name || "").trim();
+            const serValues = ser.values || {};
+            const serRegex = new RegExp(`(<c:ser>[\\s\\S]*?<c:tx>[\\s\\S]*?<c:v>${escapeRegex(serName)}<\\/c:v>[\\s\\S]*?<\\/c:ser>)`, "i");
+            const serMatch = xml.match(serRegex);
+            if (serMatch) {
+              let serBlock = serMatch[1];
+              if (typeof serValues === "object") {
+                let ptIdx = 0;
+                for (const [key, val] of Object.entries(serValues)) {
+                  const ptRegex = new RegExp(`(<c:pt idx="${ptIdx}">[\\s\\S]*?<c:v>)[^<]*(<\\/c:v>)`, "i");
+                  if (ptRegex.test(serBlock)) {
+                    serBlock = serBlock.replace(ptRegex, `$1${val}$2`);
+                  }
+                  ptIdx++;
+                }
+              }
+              xml = xml.replace(serMatch[1], serBlock);
+            }
+          }
+        }
+
+        targetParagraph.insertOoxml(xml, Word.InsertLocation.replace);
+        await context.sync();
+        return { applied: 1, detail: op.description || "Updated Word DrawingML chart" };
+      } catch (err) {
+        return { applied: 0, detail: "Chart update error: " + err.message };
+      }
+    }
     case "execute_office_js": {
       try {
         if (!op.code) return { applied: 0, detail: "No Office.js code provided" };
@@ -2720,6 +2803,10 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function escapeRegex(str) {
+  return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function openSettings() {

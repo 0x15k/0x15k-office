@@ -88,6 +88,7 @@ const HOST_OP_TYPES = {
     "set_header",
     "set_footer",
     "insert_page_break",
+    "update_chart",
     "execute_office_js"
   ],
   Excel: [
@@ -108,17 +109,23 @@ const SUPPORTED_OP_TYPES = Array.from(
   new Set([...HOST_OP_TYPES.Word, ...HOST_OP_TYPES.Excel, ...HOST_OP_TYPES.PowerPoint])
 );
 
-const SKILLS_DIR = path.join(__dirname, "skills");
+const BUILTIN_SKILLS_DIR = path.join(__dirname, "skills");
+const CUSTOM_SKILLS_DIR = path.join(__dirname, "custom_skills");
+const SKILLS_DIR = BUILTIN_SKILLS_DIR; // legacy alias
 
 function getSkillDirectories() {
-  const dirs = [SKILLS_DIR];
+  const dirs = [BUILTIN_SKILLS_DIR, CUSTOM_SKILLS_DIR];
   const sourceMarker = path.join(__dirname, ".source-dir");
   if (fs.existsSync(sourceMarker)) {
     try {
       const sourceRoot = fs.readFileSync(sourceMarker, "utf8").trim();
       const sourceSkills = sourceRoot ? path.join(sourceRoot, "skills") : "";
-      if (sourceSkills && sourceSkills !== SKILLS_DIR && fs.existsSync(path.dirname(sourceSkills))) {
+      const sourceCustom = sourceRoot ? path.join(sourceRoot, "custom_skills") : "";
+      if (sourceSkills && sourceSkills !== BUILTIN_SKILLS_DIR && fs.existsSync(path.dirname(sourceSkills))) {
         dirs.push(sourceSkills);
+      }
+      if (sourceCustom && sourceCustom !== CUSTOM_SKILLS_DIR && fs.existsSync(path.dirname(sourceCustom))) {
+        dirs.push(sourceCustom);
       }
     } catch (e) {
       // Ignore unreadable source marker
@@ -169,12 +176,24 @@ function parseSkillFile(filePath) {
 }
 
 function listAllSkills() {
-  if (!fs.existsSync(SKILLS_DIR)) return [];
-  return fs
-    .readdirSync(SKILLS_DIR)
-    .filter((f) => f.endsWith(".md"))
-    .sort()
-    .map((file) => parseSkillFile(path.join(SKILLS_DIR, file)));
+  const seen = new Set();
+  const all = [];
+  for (const dir of getSkillDirectories()) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      const files = fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".md"))
+        .sort();
+      for (const file of files) {
+        const id = path.basename(file, ".md");
+        if (seen.has(id)) continue;
+        seen.add(id);
+        all.push(parseSkillFile(path.join(dir, file)));
+      }
+    } catch (e) {}
+  }
+  return all;
 }
 
 function loadSkillsForRequest({ host = "Word", prompt = "", selectedText = "", fullDocumentText = "" }) {
@@ -193,7 +212,16 @@ function loadSkillsForRequest({ host = "Word", prompt = "", selectedText = "", f
 }
 
 function writeSkillToDirectories(filename, markdownContent) {
-  for (const dir of getSkillDirectories()) {
+  // Always write learned or user custom skills ONLY into custom_skills directories (never into built-in git-tracked skills/)
+  const targetDirs = [CUSTOM_SKILLS_DIR];
+  const sourceMarker = path.join(__dirname, ".source-dir");
+  if (fs.existsSync(sourceMarker)) {
+    try {
+      const sourceRoot = fs.readFileSync(sourceMarker, "utf8").trim();
+      if (sourceRoot) targetDirs.push(path.join(sourceRoot, "custom_skills"));
+    } catch (e) {}
+  }
+  for (const dir of targetDirs) {
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, filename), markdownContent, "utf8");
@@ -240,7 +268,7 @@ app.get("/api/status", (req, res) => {
     ok: true,
     name: "0x15k Office AI",
     author: "0x15k - YL",
-    version: "4.4.2",
+    version: "4.5.0",
     agyPath: AGY_PATH,
     agyAvailable,
     defaultAgyModel: DEFAULT_AGY_MODEL,
@@ -331,6 +359,7 @@ function getHostOperationsSchema(host) {
     '- delete_text: {"type":"delete_text","target":"<exact text>","description":"..."}\n' +
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
+    '- update_chart: {"type":"update_chart","target":"<heading or text near chart>","series":[{"name":"MITIGADO","values":{"Crítico":0,"Alto":0,"Medio":1,"Bajo":1,"Informativo":0}},{"name":"VULNERABLE","values":{"Crítico":0,"Alto":0,"Medio":0,"Bajo":0,"Informativo":0}}],"description":"..."} -> Updates DrawingML OOXML chart values directly in Word without external files.\n' +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
@@ -343,10 +372,11 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
   const basePrompt =
     customSystemPrompt && customSystemPrompt.trim()
       ? customSystemPrompt.trim()
-      : `You are a fast, precise AI agent running directly inside Microsoft ${activeHost}.\n` +
-        "Do NOT invoke any CLI, shell, or filesystem tools; answer directly from the provided context.\n" +
+      : `You are a fast, precise, autonomous AI agent running directly inside Microsoft ${activeHost}.\n` +
+        "You are backed by the 0x15k local daemon with the Autonomous Skills Engine, local filesystem skills storage (skills/), and the full Office.js / OOXML execution bridge.\n" +
         "LANGUAGE RULE: Never hardcode a single language. Preserve the document's existing language when editing (unless asked to translate), and write your brief chat reply in the user's prompt language.\n" +
-        `NEVER tell the user to perform manual ${activeHost} UI steps. Apply edits directly via JSON operations.`;
+        `NEVER tell the user to perform manual ${activeHost} UI steps. Never claim you lack access to tools or skills. Apply edits directly via JSON operations.\n` +
+        "MULTI-POINT CONSISTENCY: When the user requests a status change (e.g. 'findings mitigated', 'actualiza estado', 'cambió el resultado'), you MUST update all referenced sections atomically: Summary Tables, Detail Records, Charts, and Conclusions. Never leave a chart or conclusion contradicting the data.";
 
   const skillsBlock =
     Array.isArray(activeSkills) && activeSkills.length > 0
@@ -366,7 +396,8 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
         "- LIST SECTIONS INTEGRITY (HONORS & AWARDS, CERTIFICATIONS): In list sections like HONORS & AWARDS, AWARDS, or CERTIFICATIONS, EVERY single item MUST be formatted as an active bullet item (`- Item`). NEVER leave any award, competition ranking, or certification sitting as unbulleted plain text. If an item is unbulleted, format it as a bullet!\n" +
         "- BULLET ITEMS: In bulleted lists, never prefix list items with redundant bullet markers, dashes, or arrows (write `- Conducted penetration tests...`, NOT `- -> Conducted...` and NOT `- • Conducted...`). Never emit empty bullet items.\n" +
         "- EXHAUSTIVE DOCUMENT REVIEW: When the user asks to review or clean the whole document ('revisa todo', 'revisa formato y estructura'), you MUST audit EVERY section in [FULL_CONTEXT] (Header, Summary, Education, Experience, Certifications, Technical Skills, Honors & Awards). If any section has defects (missing bullets, unformatted awards, double arrows, residual tabs), emit operations for each defective section. NEVER claim in chat that you assigned bullets to certifications or awards unless your operations block actually includes the update for that section!\n" +
-        "- LINE SPACING: Standard multiple line spacing is specified as a multiplier (e.g. 1.15 for 1.15x multiple, 1.5 for 1.5x multiple) in standardize_document and replace_full_document.\n"
+        "- LINE SPACING: Standard multiple line spacing is specified as a multiplier (e.g. 1.15 for 1.15x multiple, 1.5 for 1.5x multiple) in standardize_document and replace_full_document.\n" +
+        "- CHARTS & DRAWINGML MUTATION VIA OOXML: Charts in Word are DrawingML objects stored in OOXML (word/charts/chart1.xml). You can inspect or update existing charts via execute_office_js using Word's native OOXML bridge (p.getOoxml() and p.insertOoxml()) targeting <c:numCache> and <c:strCache>. If a chart contains an external workbook reference (<c:externalData>), strip that tag and its relationship before reinserting. NEVER claim Word cannot edit charts, and NEVER claim you need Python or external scripts.\n"
       : "";
 
   const excelRules =
@@ -545,9 +576,9 @@ function buildContextPayload({
   }
 
   if (documentScope === "document" && fullDocumentText) {
-    sections.push(`[FULL_CONTEXT]\n${fullDocumentText.slice(0, 35000)}\n[/FULL_CONTEXT]`);
+    sections.push(`[FULL_CONTEXT]\n${fullDocumentText.slice(0, 250000)}\n[/FULL_CONTEXT]`);
   } else if (fullDocumentText && fullDocumentText !== selectedText) {
-    sections.push(`[ADDITIONAL_CONTEXT]\n${fullDocumentText.slice(0, 8000)}\n[/ADDITIONAL_CONTEXT]`);
+    sections.push(`[ADDITIONAL_CONTEXT]\n${fullDocumentText.slice(0, 150000)}\n[/ADDITIONAL_CONTEXT]`);
   }
 
   sections.push(`[USER_REQUEST]\n${prompt}\n[/USER_REQUEST]`);
@@ -1329,7 +1360,7 @@ const creds = getHttpsCredentials();
 const server3000 = https.createServer({ key: creds.key, cert: creds.cert }, app);
 listenWithPortRecovery(server3000, 3000, () => {
   console.log("==================================================");
-  console.log("0x15k Office AI v4.4.2 - Ready");
+  console.log("0x15k Office AI v4.5.0 - Ready");
   console.log("Taskpane URL: https://localhost:3000/taskpane.html");
   console.log("API Endpoint: https://localhost:3000/api/chat");
   console.log(`Certificate:  ${creds.source}`);

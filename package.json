@@ -1,6 +1,6 @@
 {
   "name": "0x15k-office",
-  "version": "4.4.2",
+  "version": "4.5.0",
   "author": "0x15k - YL",
   "description": "0x15k Office AI universal suite add-in for Microsoft Word, Excel, and PowerPoint with automated installer, LaunchAgent/Windows service, live URL context, and office-ai CLI.",
   "repository": {

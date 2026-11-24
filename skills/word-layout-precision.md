@@ -1,14 +1,40 @@
 ---
-name: Word Layout Precision
-description: Enforces safe section targeting, distinct paragraph breaks, and clean Markdown formatting in Word.
+name: Word Layout Precision & Micro-Typography
+description: Enforces surgical section targeting, distinct paragraph spacing, AST outline grounding, and micro-typographic standards in Microsoft Word.
 hosts: [Word]
 alwaysActive: true
+keywords: [word, layout, precision, typography, margins, spacing, bullets, ast, outline, targeting]
 ---
-- NEVER use `replace_selection` when `[SELECTED_CONTEXT]` is empty or does not match the section the user wants to modify. Instead, use `replace_section` (specifying `"heading"`), `search_and_replace`, or `replace_full_document`.
-- In Microsoft Word, list bullets (`•`, `-`, numbers) are paragraph-level list attributes, NOT text characters. NEVER generate multi-line `search_and_replace` queries spanning multiple paragraphs or containing virtual bullets (such as `•\t`). To update or clean formatting across an entire section, use `replace_section` specifying `"heading": "SECTION_NAME"` or `replace_full_document`.
-- To ensure Word places consecutive items on separate lines (for example, 2-line Education/Experience headers or `**Category:** items` skill lines), ALWAYS separate distinct paragraphs with blank lines (`\n\n`). Never put multiple `Category: ...` entries on the same paragraph without a blank line between them.
-- When restructuring or reformatting an entire document, prefer a single `replace_full_document` paired with `standardize_document` rather than fragmented piecemeal edits.
-- When applying typography and line spacing, specify multiple line spacing as a multiplier (e.g., `lineSpacing: 1.15` for 1.15x multiple, `1.5` for 1.5x) in `standardize_document` or `replace_full_document`; never supply arbitrary point heights for standard line spacing multipliers.
-- Preserve all existing hyperlinks in the document. Whenever reading, editing, or rewriting text with hyperlinks, format them as `[Display Text](url)` in Markdown so they are inserted as clickable native Word hyperlinks. Never convert hyperlinks to plain text.
-- Maintain existing intentional alignment on headers (such as centered candidate names and contact information lines in CVs). Do not reset centered headers to left alignment during document standardization.
-- Always inspect [DOCUMENT_STYLE_STATE] and inherit the predominant font, size, and multiple line spacing across all subsequent edits and turns. Never revert to default fonts or arbitrary line heights.
+
+## 1. Context Grounding & Surgical Action Targeting
+
+1. **Full AST Outline Navigation**:
+   - The engine provides a comprehensive AST outline in `[DOCUMENT_OUTLINE]` spanning up to 500 paragraphs with structural annotations (`(Heading 1)`, `(Heading 2)`, `(Table)`, `(ChartRef)`, `(DualSplit)`).
+   - Use the AST outline to precisely locate target paragraphs and sections before issuing edits.
+   - NEVER use `replace_selection` when `[SELECTED_CONTEXT]` is empty or does not precisely match the user's intended target. Instead, use `replace_section` with `"heading": "HEADING_TEXT"`, `search_and_replace`, or `replace_full_document`.
+
+2. **Full-Document Ingestion (up to 250,000 Chars)**:
+   - When asked to analyze, standardize, or summarize multi-page reports (up to 60–80 pages), inspect the complete `[FULL_CONTEXT]`.
+   - Ensure consistency across all sections: terminology, capitalization, citation format, numbering, and cross-references.
+
+## 2. Micro-Typography & Vertical Rhythm
+
+1. **Paragraph Vertical Rhythm**:
+   - Distinct paragraphs MUST be separated by double newlines (`\n\n`) in Markdown.
+   - In Word, spacing between paragraphs is controlled by `spaceBefore` and `spaceAfter` properties (typically 6pt after, 0pt before).
+   - NEVER insert empty paragraphs (`¶ ¶` or `\n\n\n\n`) to simulate vertical spacing; empty paragraphs create unpredictable page breaks and uneven margins.
+
+2. **Typographic Proportions**:
+   - Line Spacing: Standard professional line spacing is **1.15x multiple** (276 twips) or **1.2x multiple** for long-form prose.
+   - Font Consistency: Maintain the font family detected in `[DOCUMENT_STYLE_STATE]` (e.g. Aptos, Calibri, Arial, Times New Roman). Never mix incompatible fonts across adjacent paragraphs.
+   - Casing: Maintain uniform title casing on all parallel headings.
+
+3. **List Attributes vs Text Characters**:
+   - In Microsoft Word, list bullets (`•`, `-`, numbered lists) are native paragraph-level formatting attributes, NOT character glyphs.
+   - Never generate multi-line search targets containing fake virtual tab stops or literal bullet glyphs (`•\t`).
+   - When converting bullet lists to clean paragraphs or vice versa, use `replace_section` or `replace_full_document` so the engine binds the native Word list attributes cleanly.
+
+4. **Preserving Intentional Formatting**:
+   - Preserve all existing hyperlinks (`[Text](url)`).
+   - Preserve centered alignment on headers, title blocks, and signature blocks.
+   - Maintain table column proportioning and cell borders.

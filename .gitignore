@@ -9,6 +9,12 @@ key.pem
 .env
 .env.*
 .source-dir
+.last-session.json
+
+# User & Client Custom Skills (private, never committed)
+custom_skills/
+custom-skills/
+*.private.md
 
 # Logs
 *.log
