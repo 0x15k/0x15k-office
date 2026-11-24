@@ -6,7 +6,7 @@
   <title>0x15k Office AI</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <script src="vendor/marked.min.js"></script>
-  <link rel="stylesheet" href="css/taskpane.css" />
+  <link rel="stylesheet" href="css/taskpane.css?v=5.1.0" />
 </head>
 <body>
   <!-- Single 42px Header -->
@@ -27,6 +27,13 @@
     <div class="header-right">
       <button class="header-pill-btn" id="btn-undo" title="Undo last AI edit" style="display: none;">
         ↩ <span id="undo-count">0</span>
+      </button>
+      <button class="icon-btn" id="btn-reload" title="Hot reload add-in">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
       </button>
       <button class="icon-btn" id="btn-clear" title="New chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -184,6 +191,6 @@
     </div>
   </div>
 
-  <script src="taskpane.js"></script>
+  <script src="taskpane.js?v=5.1.0"></script>
 </body>
 </html>

@@ -272,6 +272,13 @@ function initUI() {
   };
 
   document.getElementById("btn-undo").onclick = restoreLastSnapshot;
+  const reloadBtn = document.getElementById("btn-reload");
+  if (reloadBtn) {
+    reloadBtn.onclick = () => {
+      showToast("Reloading add-in...", "info");
+      setTimeout(() => window.location.reload(true), 150);
+    };
+  }
   document.getElementById("btn-clear").onclick = clearConversation;
   document.getElementById("btn-settings").onclick = openSettings;
   document.getElementById("btn-clean-format").onclick = handleCleanFormat;
