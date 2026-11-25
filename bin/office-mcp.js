@@ -255,6 +255,31 @@ const TOOLS = [
     }
   },
   {
+    name: "office_word_format_table",
+    description: "Format tables in Microsoft Word on macOS via AppleScript: applies institutional background color (e.g. #156082) to header rows, white bold text, and clean borders.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tableIndex: {
+          type: "number",
+          description: "1-based table index to format, or 0 / omit for all tables in document."
+        },
+        headerHexColor: {
+          type: "string",
+          description: "Hex color code (e.g. '#156082'). Default #156082."
+        },
+        headerTextColor: {
+          type: "string",
+          description: "Hex color or 'white'. Default white."
+        },
+        enableBorders: {
+          type: "boolean",
+          description: "Enable single line borders. Default true."
+        }
+      }
+    }
+  },
+  {
     name: "office_list_skills",
     description: "List all built-in and dynamically learned skills currently active in the Office AI runtime.",
     inputSchema: {
@@ -468,6 +493,51 @@ async function handleToolCall(name, args = {}) {
       const skillsRes = await requestDaemon("GET", "/api/skills");
       return {
         content: [{ type: "text", text: JSON.stringify(skillsRes.skills || [], null, 2) }]
+      };
+    }
+
+    case "office_word_format_table": {
+      const hex = String(args.headerHexColor || "156082").replace(/^#/, "");
+      const r = parseInt(hex.substring(0, 2), 16) || 21;
+      const g = parseInt(hex.substring(2, 4), 16) || 96;
+      const b = parseInt(hex.substring(4, 6), 16) || 130;
+      const r16 = r * 257;
+      const g16 = g * 257;
+      const b16 = b * 257;
+      const tIdx = Number(args.tableIndex) || 0;
+      const enableBorders = args.enableBorders !== false;
+
+      const script = `
+        set doc to active document
+        set tCount to count of tables of doc
+        set startIdx to 1
+        set endIdx to tCount
+        if ${tIdx} > 0 and ${tIdx} <= tCount then
+          set startIdx to ${tIdx}
+          set endIdx to ${tIdx}
+        end if
+        repeat with i from startIdx to endIdx
+          set t to table i of doc
+          set r1 to row 1 of t
+          set s to shading of r1
+          set background pattern color of s to {${r16}, ${g16}, ${b16}}
+          set fontObj to font object of text object of r1
+          set color index of fontObj to white
+          set bold of fontObj to true
+          if ${enableBorders} then
+            try
+              set bOpts to border options of t
+              set enable borders of bOpts to true
+              set inside line style of bOpts to line style single
+              set outside line style of bOpts to line style single
+            end try
+          end if
+        end repeat
+        return "SUCCESS: Formatted " & (endIdx - startIdx + 1) & " table(s)"
+      `;
+      const res = runWordAppleScript(script);
+      return {
+        content: [{ type: "text", text: res }]
       };
     }
 

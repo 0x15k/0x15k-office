@@ -124,11 +124,14 @@ const OP_EXECUTION_PRIORITY = {
   insert_at_location: 2,
   delete_text: 2,
   insert_page_break: 2,
+  format_table: 2,
+  update_chart: 2,
   set_header: 3,
   set_footer: 3,
   standardize_document: 4,
   format_text: 5,
-  add_comment: 6
+  add_comment: 6,
+  execute_office_js: 7
 };
 
 const state = {
@@ -3367,6 +3370,78 @@ async function handleWordChartUpdate(context, op) {
   }
 }
 
+async function formatWordTablesInContext(context, op = {}) {
+  const tables = context.document.body.tables;
+  tables.load("items");
+  await context.sync();
+
+  const items = tables.items || [];
+  if (items.length === 0) {
+    return { applied: 0, detail: "No tables found in document" };
+  }
+
+  const target = op.target || "all";
+  const headerBg = cleanHex(op.headerBgColor || op.color || "#156082");
+  const headerText = cleanHex(op.headerTextColor || "#FFFFFF");
+  const isBold = op.headerBold !== false;
+  const fontName = op.fontName || state.settings.defaultFont || "Aptos";
+  const fontSize = Number(op.fontSize) || 10;
+
+  let tablesToFormat = [];
+  if (target === "all") {
+    tablesToFormat = items;
+  } else if (typeof target === "number" && items[target - 1]) {
+    tablesToFormat = [items[target - 1]];
+  } else if (target === "first" && items[0]) {
+    tablesToFormat = [items[0]];
+  } else {
+    tablesToFormat = items;
+  }
+
+  let formattedCount = 0;
+  for (const table of tablesToFormat) {
+    try {
+      table.load("rows/items");
+      await context.sync();
+
+      const rows = table.rows.items || [];
+      if (rows.length === 0) continue;
+
+      const headerRow = rows[0];
+      headerRow.load("cells/items");
+      await context.sync();
+
+      const cells = headerRow.cells.items || [];
+      for (const cell of cells) {
+        cell.shadingColor = `#${headerBg}`;
+      }
+      headerRow.font.color = `#${headerText}`;
+      headerRow.font.bold = isBold;
+      if (fontName) headerRow.font.name = fontName;
+      if (fontSize) headerRow.font.size = fontSize;
+
+      if (op.enableBorders !== false) {
+        try {
+          table.load("borderOptions");
+          await context.sync();
+          if (table.borderOptions) {
+            table.borderOptions.enableBorders = true;
+            table.borderOptions.insideLineStyle = "Single";
+            table.borderOptions.outsideLineStyle = "Single";
+          }
+        } catch (_) {}
+      }
+
+      formattedCount++;
+    } catch (e) {
+      console.warn("Table format error:", e);
+    }
+  }
+
+  await context.sync();
+  return { applied: formattedCount, detail: `Formatted ${formattedCount} table(s) with header #${headerBg}` };
+}
+
 async function executeWordOperationInContext(context, op, shouldTrack, batchHasStandardize) {
   enableTrackChangesIfNeeded(context, shouldTrack);
   const body = context.document.body;
@@ -3494,10 +3569,22 @@ async function executeWordOperationInContext(context, op, shouldTrack, batchHasS
     case "update_chart": {
       return handleWordChartUpdate(context, op);
     }
+    case "format_table": {
+      return formatWordTablesInContext(context, op);
+    }
     case "execute_office_js": {
       try {
         if (!op.code) return { applied: 0, detail: "No Office.js code provided" };
-        const cleanCode = String(op.code).replace(/^```(?:javascript|js)?\n?|\n?```$/gi, "").trim();
+        let cleanCode = String(op.code).replace(/^```(?:javascript|js)?\n?|\n?```$/gi, "").trim();
+
+        // Self-heal common LLM mistake: row.shadingColor = '#hex' (in Word.js shadingColor belongs to cell)
+        if (cleanCode.includes(".shadingColor")) {
+          cleanCode = cleanCode.replace(
+            /(\b\w+Row)\.shadingColor\s*=\s*(['"][^'"]+['"]);?/g,
+            `$1.load("cells/items"); await context.sync(); for (const _c of ($1.cells.items || [])) { _c.shadingColor = $2; }`
+          );
+        }
+
         const runner = new Function("context", "Word", `return (async () => { ${cleanCode} })();`);
         await runner(context, Word);
         await context.sync();

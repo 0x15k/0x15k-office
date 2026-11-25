@@ -38,3 +38,27 @@ keywords: [word, layout, precision, typography, margins, spacing, bullets, ast, 
    - Preserve all existing hyperlinks (`[Text](url)`).
    - Preserve centered alignment on headers, title blocks, and signature blocks.
    - Maintain table column proportioning and cell borders.
+
+---
+
+## 3. Institutional Table Formatting (#156082) & format_table
+
+1. **Table Header Shading & White Bold Text**:
+   - Institutional tables (e.g. Banco de Chile / Inside Security / corporate reports) require header row background shading `#156082` with white text (`#FFFFFF`) in bold, formatted in the document font (e.g. `Aptos` 10pt).
+   - When the user asks to format tables, set header colors (e.g. `#156082`), standardize table styles, or make headers white/bold, ALWAYS use the first-class `format_table` operation:
+     ```json:operations
+     [
+       {
+         "type": "format_table",
+         "target": "all",
+         "headerBgColor": "#156082",
+         "headerTextColor": "#FFFFFF",
+         "headerBold": true,
+         "enableBorders": true,
+         "fontName": "Aptos",
+         "fontSize": 10,
+         "description": "Aplicar color institucional #156082 con texto blanco en cabeceras de tablas"
+       }
+     ]
+     ```
+   - **CRITICAL**: NEVER use `replace_section` or `insert_at_location` when the request is to format, recolor, or standardize tables. Replacing sections destroys native Word borders and risks duplicating tables across page breaks. Always use `format_table`.

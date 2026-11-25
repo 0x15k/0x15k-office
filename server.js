@@ -104,6 +104,7 @@ const HOST_OP_TYPES = {
     "set_footer",
     "insert_page_break",
     "update_chart",
+    "format_table",
     "execute_office_js"
   ],
   Excel: [
@@ -364,6 +365,7 @@ function getHostOperationsSchema(host) {
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
     '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","showDataLabels":false,"fontName":"Aptos","fontSize":9,"categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"colors":{"CategoryOrSeries":"#HEX"},"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories, numeric series values, custom colors, data label toggle, and font styling.\n' +
+    '- format_table: {"type":"format_table","target":"all"|"first"|1|2,"headerBgColor":"#156082","headerTextColor":"#FFFFFF","headerBold":true,"enableBorders":true,"fontName":"Aptos","fontSize":10,"description":"..."} -> Directly and safely styles native Word tables: sets header row background shading (e.g. institutional #156082), white bold text, typography, and clean borders without replacing text or duplicating sections.\n' +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
