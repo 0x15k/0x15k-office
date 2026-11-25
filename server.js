@@ -1250,9 +1250,14 @@ app.post("/api/chat", async (req, res) => {
   );
 
   try {
-    if (prompt.trim().toLowerCase().startsWith("/skillfy")) {
+    const trimmedPrompt = prompt.trim();
+    const isLearningIntent =
+      /^\/(?:skillfy|learn)\b/i.test(trimmedPrompt) ||
+      /\b(?:para que aprendas|aprende(?:s)?(?: de (?:esto|mis cambios|lo que hice))?|guarda (?:este|esta) (?:estilo|formato|regla|patr[oó]n)|memoriza|registra este patr[oó]n|aprende este formato|aprendas)\b/i.test(trimmedPrompt);
+
+    if (isLearningIntent) {
       const learnedResult = await handleSkillfyRequest({
-        prompt,
+        prompt: trimmedPrompt,
         conversationHistory,
         host: activeHost,
         provider: activeProvider,
@@ -1262,7 +1267,7 @@ app.post("/api/chat", async (req, res) => {
         fullDocumentText
       });
       const durationMs = Date.now() - startTime;
-      console.log(`[POST /api/chat] /skillfy completed in ${durationMs}ms`);
+      console.log(`[POST /api/chat] Learning/Skillfy completed in ${durationMs}ms:`, learnedResult.skill?.name || "learned-rule");
       return res.json({
         reply: learnedResult.reply,
         operations: [],

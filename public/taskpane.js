@@ -169,7 +169,11 @@ function loadSettings() {
   try {
     const saved = localStorage.getItem("word_ai_settings_v3");
     if (saved) {
-      state.settings = { ...state.settings, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (parsed.agyModel === "gemini-3.8-flash-low") {
+        parsed.agyModel = "gemini-3.8-flash-high";
+      }
+      state.settings = { ...state.settings, ...parsed };
     }
     // Default autoApply to true for active execution
     state.autoApply = true;
@@ -3430,6 +3434,25 @@ async function formatWordTablesInContext(context, op = {}) {
             table.borderOptions.outsideLineStyle = "Single";
           }
         } catch (_) {}
+      }
+
+      // Smart Key-Value Proportions (30% / 70% rule for 2-column tables)
+      if (cells.length === 2) {
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          try {
+            const r = rows[rIdx];
+            r.load("cells/items");
+            await context.sync();
+            const rCells = r.cells.items || [];
+            if (rCells.length === 2) {
+              rCells[0].preferredWidth = 135; // 30% of 450pt width
+              rCells[1].preferredWidth = 315; // 70% of 450pt width
+              if (rIdx > 0) {
+                rCells[0].font.bold = true; // Bold parameter titles
+              }
+            }
+          } catch (_) {}
+        }
       }
 
       formattedCount++;
