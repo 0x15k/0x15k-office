@@ -3555,7 +3555,8 @@ async function formatWordTablesInContext(context, op = {}) {
   }
 
   const target = op.target || "all";
-  const headerBg = cleanHex(op.headerBgColor || op.color || "#156082");
+  const defaultBg = state.documentStyle?.tables?.predominantHeaderShading || state.documentStyle?.primaryBrandColor || "#1B365D";
+  const headerBg = cleanHex(op.headerBgColor || op.color || defaultBg);
   const headerText = cleanHex(op.headerTextColor || "#FFFFFF");
   const isBold = op.headerBold !== false;
   const fontName = op.fontName || state.settings.defaultFont || "Aptos";
@@ -3764,6 +3765,10 @@ async function executeWordOperationInContext(context, op, shouldTrack, batchHasS
     }
     case "format_table": {
       return formatWordTablesInContext(context, op);
+    }
+    case "save_skill": {
+      showToast(`🧠 Skill saved: ${op.name || "custom-skill"}`);
+      return { applied: 1, detail: `Skill saved: ${op.name || "custom-skill"}` };
     }
     case "execute_office_js": {
       try {
@@ -4131,7 +4136,8 @@ async function executeExcelOperations(operations) {
             range.load("rowCount,columnCount");
             await context.sync();
 
-            const headerBg = cleanHex(op.headerBgColor || op.color || "156082");
+            const defaultExcelBg = state.documentStyle?.tables?.predominantHeaderShading || state.documentStyle?.primaryBrandColor || "1B365D";
+            const headerBg = cleanHex(op.headerBgColor || op.color || defaultExcelBg);
             const headerText = cleanHex(op.headerTextColor || "FFFFFF");
             const fontName = op.fontName || "Aptos";
 
@@ -4151,6 +4157,11 @@ async function executeExcelOperations(operations) {
               range.format.autofitColumns();
             }
             await context.sync();
+            totalApplied++;
+            break;
+          }
+          case "save_skill": {
+            showToast(`🧠 Skill saved: ${op.name || "custom-skill"}`);
             totalApplied++;
             break;
           }
@@ -4281,7 +4292,8 @@ async function executePowerPointOperations(operations) {
             slides.load("items");
             await context.sync();
             const created = slides.items[slides.items.length - 1];
-            const primaryColor = cleanHex(op.primaryColor || "156082");
+            const defaultPptColor = state.documentStyle?.primaryBrandColor || state.documentStyle?.tables?.predominantHeaderShading || "1B365D";
+            const primaryColor = cleanHex(op.primaryColor || defaultPptColor);
             const fontName = op.fontName || "Aptos";
 
             const titleBox = created.shapes.addTextBox(op.title || "Executive Slide", {
@@ -4314,7 +4326,8 @@ async function executePowerPointOperations(operations) {
             const slides = context.presentation.slides;
             slides.load("items");
             await context.sync();
-            const primaryColor = cleanHex(op.primaryColor || "156082");
+            const defaultThemeColor = state.documentStyle?.primaryBrandColor || state.documentStyle?.tables?.predominantHeaderShading || "1B365D";
+            const primaryColor = cleanHex(op.primaryColor || defaultThemeColor);
             const fontName = op.fontName || "Aptos";
 
             for (const s of slides.items) {
@@ -4337,6 +4350,9 @@ async function executePowerPointOperations(operations) {
           });
         }
       } else if (op.type === "format_slide_table") {
+        totalApplied++;
+      } else if (op.type === "save_skill") {
+        showToast(`🧠 Skill saved: ${op.name || "custom-skill"}`);
         totalApplied++;
       }
     }

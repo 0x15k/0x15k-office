@@ -105,6 +105,7 @@ const HOST_OP_TYPES = {
     "insert_page_break",
     "update_chart",
     "format_table",
+    "save_skill",
     "execute_office_js"
   ],
   Excel: [
@@ -115,6 +116,7 @@ const HOST_OP_TYPES = {
     "insert_chart",
     "create_sheet",
     "clear_range",
+    "save_skill",
     "execute_office_js"
   ],
   PowerPoint: [
@@ -122,7 +124,8 @@ const HOST_OP_TYPES = {
     "insert_slide",
     "apply_theme",
     "format_slide_table",
-    "replace_slide_selection"
+    "replace_slide_selection",
+    "save_skill"
   ]
 };
 
@@ -337,16 +340,22 @@ app.post("/api/session/clear", (req, res) => {
 });
 
 function getHostOperationsSchema(host) {
+  const commonOps =
+    '- save_skill: {"type":"save_skill","name":"<kebab-case-name>","description":"<clear summary of the learned style/rule>","targetHost":"' +
+    host +
+    '","rules":["<imperative rule 1 derived from documentStyle>","<imperative rule 2>"],"blueprint":"<ascii wireframe/structure>"} -> Emitted when the user asks to learn, extract, or save document/table styles and layout into a permanent reusable skill. The parameters MUST be derived directly from [DOCUMENT_STYLE_STATE] and the empirical document context.\n';
+
   if (host === "Excel") {
     return (
       "Valid Excel operation types:\n" +
-      '- format_table: {"type":"format_table","address":"A1:E10","headerBgColor":"#156082","headerTextColor":"#FFFFFF","headerBold":true,"autoFit":true,"description":"..."} -> Directly and safely styles an Excel table with corporate header shading (#156082), white bold text, and column auto-fit.\n' +
+      '- format_table: {"type":"format_table","address":"A1:E10","headerBgColor":"#HEX","headerTextColor":"#FFFFFF","headerBold":true,"autoFit":true,"description":"..."} -> Directly and safely styles an Excel table with detected header shading, white bold text, and column auto-fit.\n' +
       '- insert_chart: {"type":"insert_chart","dataRange":"A1:B10","chartType":"ColumnClustered"|"BarClustered"|"Pie"|"Line","title":"Sales Analysis","description":"..."} -> Creates a native Excel chart with corporate colors.\n' +
       '- set_range_values: {"type":"set_range_values","startCell":"A1","values":[["Header 1","Header 2"],["Row 1",100]],"createTable":true,"description":"..."}\n' +
       '- set_formula: {"type":"set_formula","cell":"C2","formula":"=SUM(A2:B2)","description":"..."}\n' +
-      '- format_range: {"type":"format_range","address":"A1:D1","style":{"bold":true,"fillColor":"#156082","fontColor":"#FFFFFF","numberFormat":"$#,##0.00","autoFit":true},"description":"..."}\n' +
+      '- format_range: {"type":"format_range","address":"A1:D1","style":{"bold":true,"fillColor":"#HEX","fontColor":"#FFFFFF","numberFormat":"$#,##0.00","autoFit":true},"description":"..."}\n' +
       '- create_sheet: {"type":"create_sheet","name":"Summary","values":[["Metric","Value"]],"description":"..."}\n' +
       '- clear_range: {"type":"clear_range","address":"A1:Z50","description":"..."}\n' +
+      commonOps +
       '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.workbook...; await context.sync();"}'
     );
   }
@@ -354,29 +363,31 @@ function getHostOperationsSchema(host) {
   if (host === "PowerPoint") {
     return (
       "Valid PowerPoint operation types:\n" +
-      '- apply_theme: {"type":"apply_theme","primaryColor":"#156082","fontName":"Aptos","description":"..."} -> Standardizes entire deck typography to Aptos and applies corporate #156082 styling to titles and key accents.\n' +
-      '- format_slide_table: {"type":"format_slide_table","headerBgColor":"#156082","headerTextColor":"#FFFFFF","description":"..."} -> Formats slide tables with corporate #156082 header shading and white bold text.\n' +
+      '- apply_theme: {"type":"apply_theme","primaryColor":"#HEX","fontName":"Aptos","description":"..."} -> Standardizes entire deck typography and applies primary accent styling to titles and key cards.\n' +
+      '- format_slide_table: {"type":"format_slide_table","headerBgColor":"#HEX","headerTextColor":"#FFFFFF","description":"..."} -> Formats slide tables with header shading and white bold text.\n' +
       '- insert_slide: {"type":"insert_slide","title":"Executive Overview","bullets":["Key takeaway 1","Key takeaway 2"],"description":"..."}\n' +
       '- generate_slides: {"type":"generate_slides","slides":[{"title":"Slide Title","bullets":["Point 1","Point 2"]}],"description":"..."}\n' +
-      '- replace_slide_selection: {"type":"replace_slide_selection","content":"Updated slide text","description":"..."}'
+      '- replace_slide_selection: {"type":"replace_slide_selection","content":"Updated slide text","description":"..."}\n' +
+      commonOps
     );
   }
 
   return (
     "Valid Word operation types:\n" +
-    '- replace_full_document: {"type":"replace_full_document","fontName":"Times New Roman","fontSize":10.5,"lineSpacing":1.15,"content":"<full markdown>","description":"..."} (fontName/fontSize/lineSpacing optional; always place replace_full_document BEFORE standardize_document)\n' +
+    '- replace_full_document: {"type":"replace_full_document","fontName":"Aptos","fontSize":10.5,"lineSpacing":1.15,"content":"<full markdown>","description":"..."} (fontName/fontSize/lineSpacing optional; always place replace_full_document BEFORE standardize_document)\n' +
     '- replace_section: {"type":"replace_section","heading":"<exact section heading>","content":"<markdown section including heading>","description":"..."} -> Replaces an entire section from its heading up to the next heading.\n' +
-    '- standardize_document: {"type":"standardize_document","fontName":"Calibri","fontSize":10.5,"lineSpacing":1.15,"description":"..."}\n' +
+    '- standardize_document: {"type":"standardize_document","fontName":"Aptos","fontSize":10.5,"lineSpacing":1.15,"description":"..."}\n' +
     '- replace_selection: {"type":"replace_selection","content":"<markdown>","description":"..."}\n' +
     '- search_and_replace: {"type":"search_and_replace","find":"<exact text>","replace":"<new text>","matchCase":false,"description":"..."}\n' +
     '- insert_at_location: {"type":"insert_at_location","location":"start"|"end"|"after_target"|"before_target","target":"<anchor>","content":"<markdown>","description":"..."}\n' +
-    '- format_text: {"type":"format_text","target":"<exact text or empty>","style":{"bold":true,"italic":false,"underline":false,"color":"#111827","highlight":"#FEF08A","fontSize":11,"fontName":"Calibri","alignment":"Left"|"Centered"|"Right"|"Justified","heading":1},"description":"..."}\n' +
+    '- format_text: {"type":"format_text","target":"<exact text or empty>","style":{"bold":true,"italic":false,"underline":false,"color":"#111827","highlight":"#FEF08A","fontSize":11,"fontName":"Aptos","alignment":"Left"|"Centered"|"Right"|"Justified","heading":1},"description":"..."}\n' +
     '- add_comment: {"type":"add_comment","target":"<anchor or empty>","comment":"<text>","description":"..."}\n' +
     '- delete_text: {"type":"delete_text","target":"<exact text>","description":"..."}\n' +
     '- set_header / set_footer: {"type":"set_header"|"set_footer","location":"replace"|"end","content":"<markdown>","description":"..."}\n' +
     '- insert_page_break: {"type":"insert_page_break","location":"end"|"after_target"|"selection","target":"<optional>","description":"..."}\n' +
     '- update_chart: {"type":"update_chart","target":"<heading, section anchor, or empty if chart is selected>","chartType":"pie"|"doughnut"|"bar"|"column"|"line","title":"<optional title>","showDataLabels":false,"fontName":"Aptos","fontSize":9,"categories":["Cat 1","Cat 2",...],"series":[{"name":"Series Name","values":[10,20,...]}],"colors":{"CategoryOrSeries":"#HEX"},"description":"..."} -> Updates or creates a DrawingML OOXML chart in Word with native Chart Design & Format ribbon support. Universal and domain-agnostic: accepts arbitrary categories, numeric series values, custom colors, data label toggle, and font styling.\n' +
-    '- format_table: {"type":"format_table","target":"all"|"first"|1|2,"headerBgColor":"#156082","headerTextColor":"#FFFFFF","headerBold":true,"enableBorders":true,"fontName":"Aptos","fontSize":10,"description":"..."} -> Directly and safely styles native Word tables: sets header row background shading (e.g. institutional #156082), white bold text, typography, and clean borders without replacing text or duplicating sections.\n' +
+    '- format_table: {"type":"format_table","target":"all"|"first"|1|2,"headerBgColor":"#HEX","headerTextColor":"#FFFFFF","headerBold":true,"enableBorders":true,"fontName":"Aptos","fontSize":10,"description":"..."} -> Directly and safely styles native Word tables: sets header row background shading (matching detected brand or requested color), white bold text, typography, and clean borders without replacing text or duplicating sections.\n' +
+    commonOps +
     '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.document...; await context.sync();"} (Code Mode: direct transactional Word.js execution)'
   );
 }
@@ -434,11 +445,11 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
   const excelRules =
     activeHost === "Excel"
       ? "\nEXCEL FORMULAS, DATA GRID & STYLING RULES:\n" +
-        "- INSTITUTIONAL DESIGN TOKENS (#156082): Corporate table headers require background fill `#156082` with white bold text (`#FFFFFF`) and `Aptos` font. Use `format_table` with `headerBgColor: \"#156082\"` and `autoFit: true`.\n" +
+        "- DESIGN TOKENS & TABLE STYLING: Inherit table header shading, font family, and accents dynamically from [DOCUMENT_STYLE_STATE] or active skills. When formatting tables, pass the detected header background color in headerBgColor and white bold text.\n" +
         "- FORMULAS SYNTAX: All formulas MUST begin with an equals sign `=` (e.g. `=SUM(B2:B10)`, `=AVERAGE(C2:C12)`, `=(C2-B2)/B2`, `=IF(D2>0, \"Profit\", \"Loss\")`). Never write formulas as raw text without `=`. Always use standard uppercase A1 notation.\n" +
         "- DATA INSERTION: Use `set_range_values` with 2D arrays (`values: [[\"Header 1\", \"Header 2\"], [\"Value 1\", 100]]`). For placeholder cells calculated by `set_formula`, provide an empty string `\"\"` in `set_range_values`.\n" +
         "- STRUCTURED TABLES: When building tables, models, or data breakdowns, set `createTable: true` in `set_range_values` to create an official Excel structured table with filter buttons and banded rows.\n" +
-        "- FINANCIAL & METRIC FORMATTING: Pair numeric insertions with `format_range` to apply standard number formats (`numberFormat: \"$#,##0.00\"` for currency, `\"0.0%\"` for percentages, `\"#,##0\"` for integers, `\"YYYY-MM-DD\"` for dates) and highlight headers (`bold: true`, `fillColor: \"#156082\"`, `fontColor: \"#FFFFFF\"`, `autoFit: true`).\n" +
+        "- FINANCIAL & METRIC FORMATTING: Pair numeric insertions with `format_range` to apply standard number formats (`numberFormat: \"$#,##0.00\"` for currency, `\"0.0%\"` for percentages, `\"#,##0\"` for integers, `\"YYYY-MM-DD\"` for dates) and highlight headers (`bold: true`, `fillColor`: detected brand color, `fontColor: \"#FFFFFF\"`, `autoFit: true`).\n" +
         "- NATIVE CHARTS: Use `insert_chart` with `dataRange` and `chartType` (\"ColumnClustered\", \"BarClustered\", \"Pie\", \"Line\") to plot data cleanly without external images.\n" +
         "- EXISTING DATA RESPECT: When updating or calculating in existing sheets, inspect [FULL_CONTEXT] for cell coordinates and existing values. Only modify or target the relevant ranges.\n"
       : "";
@@ -446,15 +457,33 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
   const powerPointRules =
     activeHost === "PowerPoint"
       ? "\nPOWERPOINT SLIDE DESIGN & EXECUTIVE STORYTELLING RULES:\n" +
-        "- INSTITUTIONAL BRANDING (#156082): Use corporate primary color `#156082` for slide titles and accent cards. Apply Aptos font across all text frames via `apply_theme`.\n" +
-        "- SLIDE TABLES: Style all slide comparison tables with `format_slide_table` using `#156082` header shading and white bold text.\n" +
+        "- BRAND IDENTITY & CONSISTENCY: Inherit primary branding colors and typography dynamically from [DOCUMENT_STYLE_STATE] or active skills. Apply consistent styling to titles and cards via `apply_theme`.\n" +
+        "- SLIDE TABLES: Style slide comparison tables with `format_slide_table` using detected header shading and white bold text.\n" +
         "- ACTION-ORIENTED TITLES: Every slide title in `generate_slides` or `insert_slide` must be a clear, informative action headline conveying the core takeaway (3 to 8 words), not a generic single word.\n" +
         "- CONCISE BULLET POINTS: Each slide in `generate_slides` MUST contain 3 to 5 concise bullet points. Keep each bullet under 15 words. Never emit dense paragraphs.\n" +
         "- BULLETS ARRAY FORMAT: In `generate_slides`, `bullets` MUST be an array of plain strings (`[\"Point 1\", \"Point 2\"]`). NEVER prefix strings in the array with Markdown hashes, hyphens, or asterisks (PowerPoint adds native bullet formatting automatically).\n" +
         "- SLIDE SELECTION REPLACEMENT: Use `replace_slide_selection` with `content` when modifying or refining currently selected slide text or shape content.\n"
       : "";
 
-  const hostSpecificRules = wordRules + excelRules + powerPointRules;
+  const learningRules =
+    "\nSKILL LEARNING & EXTRACTION PROTOCOL:\n" +
+    "When the user asks to learn, extract, memorize, register, or save the formatting, layout, colors, or styles of the document or tables (regardless of the user's language, e.g. 'aprende este formato', 'learn this style', 'extract table format', 'memorize design'):\n" +
+    "1. Analyze the empirical structure in [DOCUMENT_STYLE_STATE] and [FULL_CONTEXT] (table header shading, font families, heading hierarchy, 2-column key/value ratios, line spacing).\n" +
+    "2. Do NOT hardcode arbitrary colors or rules not present in the document.\n" +
+    "3. You MUST emit a `save_skill` operation in your ```json:operations block containing:\n" +
+    "   - name: concise-kebab-name\n" +
+    "   - description: clear explanation of when this skill applies\n" +
+    "   - targetHost: '" +
+    activeHost +
+    "'\n" +
+    "   - rules: array of universal, imperative rules extracted from the real document\n" +
+    "   - blueprint: structured ASCII wireframe / layout mockup showing the clean hierarchy\n" +
+    "   - expectedSteps: array of 3-5 operational steps\n" +
+    "   - antiPattern: illustrative bad example using anonymous placeholders\n" +
+    "   - goodPattern: illustrative clean example using anonymous placeholders\n" +
+    "4. Summarize the learned design tokens concisely in your reply.\n";
+
+  const hostSpecificRules = wordRules + excelRules + powerPointRules + learningRules;
 
   if (!agentMode) {
     return basePrompt + hostSpecificRules + skillsBlock;
@@ -1198,6 +1227,50 @@ async function handleSkillfyRequest({
   };
 }
 
+function persistLearnedSkillFromOperation(op, host = "Word") {
+  const activeHost = normalizeHost(host);
+  const rawId = (op.id || op.name || "learned-document-skill").toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  const id = rawId.startsWith("learned-") ? rawId : `learned-${rawId}`;
+  const name = op.name || id;
+  const description = op.description || `Learned design style and rules for ${activeHost}`;
+  const hosts = Array.isArray(op.hosts) && op.hosts.length > 0 ? op.hosts : (op.targetHost ? [normalizeHost(op.targetHost)] : [activeHost]);
+  const rules = Array.isArray(op.rules) ? op.rules : (op.rules ? [String(op.rules)] : []);
+  const blueprint = op.blueprint || "";
+  const expectedSteps = Array.isArray(op.expectedSteps) ? op.expectedSteps : [];
+  const antiPattern = op.antiPattern || "";
+  const goodPattern = op.goodPattern || "";
+
+  let markdownDoc =
+    `---\n` +
+    `name: ${name}\n` +
+    `description: ${description}\n` +
+    `hosts: [${hosts.join(", ")}]\n` +
+    `alwaysActive: true\n` +
+    `---\n\n`;
+
+  if (blueprint) {
+    markdownDoc += `## Expected Layout Blueprint / Mockup\n\n\`\`\`\n${blueprint}\n\`\`\`\n\n`;
+  }
+
+  if (expectedSteps.length > 0) {
+    markdownDoc += `## Expected Execution Steps\n\n` + expectedSteps.map((s, idx) => `${idx + 1}. ${s}`).join("\n") + `\n\n`;
+  }
+
+  if (rules.length > 0) {
+    markdownDoc += `## Enforced Rules\n\n` + rules.map((r) => `- ${r}`).join("\n") + `\n`;
+  }
+
+  if (antiPattern && goodPattern) {
+    markdownDoc +=
+      `\n## Examples\n\n` +
+      `### ❌ Anti-pattern (Before / Rejected)\n\`\`\`\n${antiPattern}\n\`\`\`\n\n` +
+      `### ✅ Correct Pattern (After / Compliant)\n\`\`\`\n${goodPattern}\n\`\`\`\n`;
+  }
+
+  writeSkillToDirectories(`${id}.md`, markdownDoc);
+  return { id, name, description, hosts, markdownDoc };
+}
+
 app.post("/api/skillfy", async (req, res) => {
   const startTime = Date.now();
   const {
@@ -1276,11 +1349,9 @@ app.post("/api/chat", async (req, res) => {
 
   try {
     const trimmedPrompt = prompt.trim();
-    const isLearningIntent =
-      /^\/(?:skillfy|learn)\b/i.test(trimmedPrompt) ||
-      /\b(?:aprende|aprendas|extrae.*(?:formato|dise[ñn]o|estilo|patr[oó]n)|guarda.*(?:formato|dise[ñn]o|estilo|regla|patr[oó]n)|memoriza|registra.*(?:formato|dise[ñn]o|patr[oó]n)|analiza.*(?:formato|dise[ñn]o|estilo)|skillfy|learn)\b/i.test(trimmedPrompt);
+    const isSlashSkillfy = /^\/(?:skillfy|learn)\b/i.test(trimmedPrompt);
 
-    if (isLearningIntent) {
+    if (isSlashSkillfy) {
       const learnedResult = await handleSkillfyRequest({
         prompt: trimmedPrompt,
         conversationHistory,
@@ -1293,7 +1364,7 @@ app.post("/api/chat", async (req, res) => {
         documentStyle
       });
       const durationMs = Date.now() - startTime;
-      console.log(`[POST /api/chat] Learning/Skillfy completed in ${durationMs}ms:`, learnedResult.skill?.name || "learned-rule");
+      console.log(`[POST /api/chat] Slash command skillfy completed in ${durationMs}ms:`, learnedResult.skill?.name || "learned-rule");
       return res.json({
         reply: learnedResult.reply,
         operations: [],
@@ -1358,6 +1429,17 @@ app.post("/api/chat", async (req, res) => {
     console.log(
       `[POST /api/chat] Completed in ${durationMs}ms | Host=${activeHost} | Skills=${activeSkills.length} | Operations=${parsed.operations.length}`
     );
+
+    // Persist any save_skill operations emitted by the LLM
+    const saveSkillOps = parsed.operations.filter((op) => op.type === "save_skill");
+    for (const op of saveSkillOps) {
+      try {
+        const persisted = persistLearnedSkillFromOperation(op, activeHost);
+        console.log(`[POST /api/chat] Persisted save_skill operation: ${persisted.id} (${persisted.name})`);
+      } catch (saveErr) {
+        console.warn(`[POST /api/chat] Failed to persist save_skill operation:`, saveErr.message);
+      }
+    }
 
     try {
       const updatedHistory = Array.isArray(conversationHistory) ? [...conversationHistory] : [];
