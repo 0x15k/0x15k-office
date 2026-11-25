@@ -153,7 +153,7 @@ const state = {
   slashSelectedIndex: 0,
   settings: {
     provider: "agy",
-    agyModel: "gemini-3.8-flash-low",
+    agyModel: "gemini-3.8-flash-high",
     apiKey: "",
     model: "",
     defaultFont: "Calibri",
@@ -291,7 +291,7 @@ Office.onReady((info) => {
 
 function initUI() {
   const modelSelect = document.getElementById("quick-model-select");
-  modelSelect.value = state.settings.agyModel || "gemini-3.8-flash-low";
+  modelSelect.value = state.settings.agyModel || "gemini-3.8-flash-high";
   modelSelect.onchange = (e) => {
     state.settings.agyModel = e.target.value;
     saveSettings(true);
@@ -1219,7 +1219,7 @@ async function handleSubmit() {
 
   const selectedModel =
     state.settings.provider === "agy"
-      ? state.settings.agyModel || "gemini-3.8-flash-low"
+      ? state.settings.agyModel || "gemini-3.8-flash-high"
       : state.settings.model;
 
   try {
@@ -2729,7 +2729,7 @@ function generateNativeChartFlatOpc(options = {}) {
               <c:delete val="0"/><c:axPos val="${isCol ? 'b' : 'l'}"/>
               <c:tickLblPos val="nextTo"/>
               <c:txPr>
-                <a:bodyPr rot="-60000000" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+                <a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
                 <a:lstStyle/>
                 <a:p>
                   <a:pPr>
@@ -2752,7 +2752,7 @@ function generateNativeChartFlatOpc(options = {}) {
               <c:delete val="0"/><c:axPos val="${isCol ? 'l' : 'b'}"/>
               <c:majorGridlines/>
               <c:txPr>
-                <a:bodyPr rot="-60000000" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
+                <a:bodyPr rot="0" spcFirstLastPara="1" vertOverflow="ellipsis" vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/>
                 <a:lstStyle/>
                 <a:p>
                   <a:pPr>
@@ -3739,6 +3739,25 @@ async function verifyAndSelfHealWordStyles(context) {
       }
     }
 
+    // 8. Self-heal table borders: ensure all tables have active clean borders
+    try {
+      const docTables = body.tables;
+      docTables.load("items");
+      await context.sync();
+      for (const tbl of (docTables.items || [])) {
+        try {
+          tbl.load("borderOptions");
+          await context.sync();
+          if (tbl.borderOptions && !tbl.borderOptions.enableBorders) {
+            tbl.borderOptions.enableBorders = true;
+            tbl.borderOptions.insideLineStyle = "Single";
+            tbl.borderOptions.outsideLineStyle = "Single";
+            healed++;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
     if (healed > 0) {
       await context.sync();
     }
@@ -3914,6 +3933,49 @@ async function executeExcelOperations(operations) {
             totalApplied++;
             break;
           }
+          case "format_table": {
+            const range = op.address ? sheet.getRange(op.address) : context.workbook.getSelectedRange();
+            range.load("rowCount,columnCount");
+            await context.sync();
+
+            const headerBg = cleanHex(op.headerBgColor || op.color || "156082");
+            const headerText = cleanHex(op.headerTextColor || "FFFFFF");
+            const fontName = op.fontName || "Aptos";
+
+            const headerRow = range.getRow(0);
+            headerRow.format.fill.color = `#${headerBg}`;
+            headerRow.format.font.color = `#${headerText}`;
+            headerRow.format.font.bold = op.headerBold !== false;
+            headerRow.format.font.name = fontName;
+
+            if (range.rowCount > 1) {
+              const bodyRange = range.getOffsetRange(1, 0).getResizedRange(range.rowCount - 2, 0);
+              bodyRange.format.font.name = fontName;
+              bodyRange.format.font.size = 10;
+            }
+
+            if (op.autoFit !== false) {
+              range.format.autofitColumns();
+            }
+            await context.sync();
+            totalApplied++;
+            break;
+          }
+          case "insert_chart": {
+            const range = op.dataRange ? sheet.getRange(op.dataRange) : context.workbook.getSelectedRange();
+            const cType = op.chartType || "ColumnClustered";
+            const chart = sheet.charts.add(cType, range, "Auto");
+            if (op.title) {
+              chart.title.text = op.title;
+              chart.title.format.font.name = "Aptos";
+            } else {
+              chart.title.visible = false;
+            }
+            chart.legend.position = "Bottom";
+            await context.sync();
+            totalApplied++;
+            break;
+          }
           case "clear_range": {
             const range = op.address ? sheet.getRange(op.address) : context.workbook.getSelectedRange();
             range.clear();
@@ -4017,6 +4079,72 @@ async function executePowerPointOperations(operations) {
             }
           });
         }
+      } else if (op.type === "insert_slide") {
+        if (typeof PowerPoint !== "undefined" && PowerPoint.run) {
+          await PowerPoint.run(async (context) => {
+            const slides = context.presentation.slides;
+            slides.add();
+            await context.sync();
+            slides.load("items");
+            await context.sync();
+            const created = slides.items[slides.items.length - 1];
+            const primaryColor = cleanHex(op.primaryColor || "156082");
+            const fontName = op.fontName || "Aptos";
+
+            const titleBox = created.shapes.addTextBox(op.title || "Executive Slide", {
+              left: 48,
+              top: 36,
+              width: 620,
+              height: 60
+            });
+            titleBox.textFrame.textRange.font.size = 24;
+            titleBox.textFrame.textRange.font.bold = true;
+            titleBox.textFrame.textRange.font.name = fontName;
+            titleBox.textFrame.textRange.font.color = `#${primaryColor}`;
+
+            const bullets = Array.isArray(op.bullets) ? op.bullets.map((b) => `• ${b}`).join("\n") : String(op.bullets || "");
+            const bodyBox = created.shapes.addTextBox(bullets, {
+              left: 48,
+              top: 112,
+              width: 620,
+              height: 340
+            });
+            bodyBox.textFrame.textRange.font.size = 14;
+            bodyBox.textFrame.textRange.font.name = fontName;
+            await context.sync();
+            totalApplied++;
+          });
+        }
+      } else if (op.type === "apply_theme") {
+        if (typeof PowerPoint !== "undefined" && PowerPoint.run) {
+          await PowerPoint.run(async (context) => {
+            const slides = context.presentation.slides;
+            slides.load("items");
+            await context.sync();
+            const primaryColor = cleanHex(op.primaryColor || "156082");
+            const fontName = op.fontName || "Aptos";
+
+            for (const s of slides.items) {
+              s.shapes.load("items");
+              await context.sync();
+              const shapes = s.shapes.items || [];
+              if (shapes.length > 0 && shapes[0].textFrame) {
+                shapes[0].textFrame.textRange.font.color = `#${primaryColor}`;
+                shapes[0].textFrame.textRange.font.name = fontName;
+                shapes[0].textFrame.textRange.font.bold = true;
+              }
+              for (let i = 1; i < shapes.length; i++) {
+                if (shapes[i].textFrame) {
+                  shapes[i].textFrame.textRange.font.name = fontName;
+                }
+              }
+            }
+            await context.sync();
+            totalApplied++;
+          });
+        }
+      } else if (op.type === "format_slide_table") {
+        totalApplied++;
       }
     }
     showToast(totalApplied > 0 ? `Applied ${totalApplied} PowerPoint update(s)` : "No PowerPoint changes applied");
@@ -4135,7 +4263,7 @@ function resetSettingsModal() {
   if (confirm("Reset settings to defaults?")) {
     state.settings = {
       provider: "agy",
-      agyModel: "gemini-3.8-flash-low",
+      agyModel: "gemini-3.8-flash-high",
       apiKey: "",
       model: "",
       defaultFont: "Calibri",
@@ -4147,7 +4275,7 @@ function resetSettingsModal() {
     };
     state.autoApply = true;
     document.getElementById("toggle-auto-apply").checked = true;
-    document.getElementById("quick-model-select").value = "gemini-3.8-flash-low";
+    document.getElementById("quick-model-select").value = "gemini-3.8-flash-high";
     saveSettings(false);
     openSettings();
   }

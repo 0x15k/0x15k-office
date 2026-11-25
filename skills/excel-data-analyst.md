@@ -57,3 +57,20 @@ keywords: [excel, data, analysis, analyst, chart, graph, plot, pivot, statistics
      - Category counts: `=COUNTIF(Data[Category], F2)`
      - Category volume: `=SUMIF(Data[Category], F2, Data[Amount])`
      - Share of Total: `=G2 / SUM($G$2:$G$10)` (formatted as `0.0%`)
+
+5. **Institutional Table Styling (#156082) & Declarative Operations**:
+   - Always format table headers with `#156082` background fill and white bold text (`#FFFFFF`) using `format_table`:
+     ```json:operations
+     [
+       {
+         "type": "format_table",
+         "address": "A1:E15",
+         "headerBgColor": "#156082",
+         "headerTextColor": "#FFFFFF",
+         "headerBold": true,
+         "autoFit": true,
+         "fontName": "Aptos"
+       }
+     ]
+     ```
+   - Use `insert_chart` for native declarative chart creation with Aptos typography and corporate colors without writing manual scripts.

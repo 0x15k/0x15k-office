@@ -86,7 +86,7 @@ const ENRICHED_PATH = [
   process.env.PATH || ""
 ].filter(Boolean).join(":");
 
-const DEFAULT_AGY_MODEL = "gemini-3.8-flash-low";
+const DEFAULT_AGY_MODEL = "gemini-3.8-flash-high";
 const SUPPORTED_HOSTS = ["Word", "Excel", "PowerPoint"];
 
 const HOST_OP_TYPES = {
@@ -111,12 +111,17 @@ const HOST_OP_TYPES = {
     "set_range_values",
     "set_formula",
     "format_range",
+    "format_table",
+    "insert_chart",
     "create_sheet",
     "clear_range",
     "execute_office_js"
   ],
   PowerPoint: [
     "generate_slides",
+    "insert_slide",
+    "apply_theme",
+    "format_slide_table",
     "replace_slide_selection"
   ]
 };
@@ -278,6 +283,7 @@ app.get("/api/status", (req, res) => {
     agyAvailable,
     defaultAgyModel: DEFAULT_AGY_MODEL,
     supportedHosts: SUPPORTED_HOSTS,
+    hostOperationTypes: HOST_OP_TYPES,
     supportedProviders: ["agy", "gemini", "claude", "openai"],
     skillsCount: listAllSkills().length,
     capabilities: {
@@ -334,9 +340,11 @@ function getHostOperationsSchema(host) {
   if (host === "Excel") {
     return (
       "Valid Excel operation types:\n" +
+      '- format_table: {"type":"format_table","address":"A1:E10","headerBgColor":"#156082","headerTextColor":"#FFFFFF","headerBold":true,"autoFit":true,"description":"..."} -> Directly and safely styles an Excel table with corporate header shading (#156082), white bold text, and column auto-fit.\n' +
+      '- insert_chart: {"type":"insert_chart","dataRange":"A1:B10","chartType":"ColumnClustered"|"BarClustered"|"Pie"|"Line","title":"Sales Analysis","description":"..."} -> Creates a native Excel chart with corporate colors.\n' +
       '- set_range_values: {"type":"set_range_values","startCell":"A1","values":[["Header 1","Header 2"],["Row 1",100]],"createTable":true,"description":"..."}\n' +
       '- set_formula: {"type":"set_formula","cell":"C2","formula":"=SUM(A2:B2)","description":"..."}\n' +
-      '- format_range: {"type":"format_range","address":"A1:D1","style":{"bold":true,"fillColor":"#18181B","fontColor":"#FFFFFF","numberFormat":"$#,##0.00","autoFit":true},"description":"..."}\n' +
+      '- format_range: {"type":"format_range","address":"A1:D1","style":{"bold":true,"fillColor":"#156082","fontColor":"#FFFFFF","numberFormat":"$#,##0.00","autoFit":true},"description":"..."}\n' +
       '- create_sheet: {"type":"create_sheet","name":"Summary","values":[["Metric","Value"]],"description":"..."}\n' +
       '- clear_range: {"type":"clear_range","address":"A1:Z50","description":"..."}\n' +
       '- execute_office_js: {"type":"execute_office_js","description":"...","code":"context.workbook...; await context.sync();"}'
@@ -346,6 +354,9 @@ function getHostOperationsSchema(host) {
   if (host === "PowerPoint") {
     return (
       "Valid PowerPoint operation types:\n" +
+      '- apply_theme: {"type":"apply_theme","primaryColor":"#156082","fontName":"Aptos","description":"..."} -> Standardizes entire deck typography to Aptos and applies corporate #156082 styling to titles and key accents.\n' +
+      '- format_slide_table: {"type":"format_slide_table","headerBgColor":"#156082","headerTextColor":"#FFFFFF","description":"..."} -> Formats slide tables with corporate #156082 header shading and white bold text.\n' +
+      '- insert_slide: {"type":"insert_slide","title":"Executive Overview","bullets":["Key takeaway 1","Key takeaway 2"],"description":"..."}\n' +
       '- generate_slides: {"type":"generate_slides","slides":[{"title":"Slide Title","bullets":["Point 1","Point 2"]}],"description":"..."}\n' +
       '- replace_slide_selection: {"type":"replace_slide_selection","content":"Updated slide text","description":"..."}'
     );
@@ -423,17 +434,21 @@ function buildSystemPrompt(customSystemPrompt, agentMode = true, host = "Word", 
   const excelRules =
     activeHost === "Excel"
       ? "\nEXCEL FORMULAS, DATA GRID & STYLING RULES:\n" +
+        "- INSTITUTIONAL DESIGN TOKENS (#156082): Corporate table headers require background fill `#156082` with white bold text (`#FFFFFF`) and `Aptos` font. Use `format_table` with `headerBgColor: \"#156082\"` and `autoFit: true`.\n" +
         "- FORMULAS SYNTAX: All formulas MUST begin with an equals sign `=` (e.g. `=SUM(B2:B10)`, `=AVERAGE(C2:C12)`, `=(C2-B2)/B2`, `=IF(D2>0, \"Profit\", \"Loss\")`). Never write formulas as raw text without `=`. Always use standard uppercase A1 notation.\n" +
         "- DATA INSERTION: Use `set_range_values` with 2D arrays (`values: [[\"Header 1\", \"Header 2\"], [\"Value 1\", 100]]`). For placeholder cells calculated by `set_formula`, provide an empty string `\"\"` in `set_range_values`.\n" +
         "- STRUCTURED TABLES: When building tables, models, or data breakdowns, set `createTable: true` in `set_range_values` to create an official Excel structured table with filter buttons and banded rows.\n" +
-        "- FINANCIAL & METRIC FORMATTING: Pair numeric insertions with `format_range` to apply standard number formats (`numberFormat: \"$#,##0.00\"` for currency, `\"0.0%\"` for percentages, `\"#,##0\"` for integers, `\"YYYY-MM-DD\"` for dates) and highlight headers (`bold: true`, `fillColor: \"#1E293B\"`, `fontColor: \"#FFFFFF\"`, `autoFit: true`).\n" +
+        "- FINANCIAL & METRIC FORMATTING: Pair numeric insertions with `format_range` to apply standard number formats (`numberFormat: \"$#,##0.00\"` for currency, `\"0.0%\"` for percentages, `\"#,##0\"` for integers, `\"YYYY-MM-DD\"` for dates) and highlight headers (`bold: true`, `fillColor: \"#156082\"`, `fontColor: \"#FFFFFF\"`, `autoFit: true`).\n" +
+        "- NATIVE CHARTS: Use `insert_chart` with `dataRange` and `chartType` (\"ColumnClustered\", \"BarClustered\", \"Pie\", \"Line\") to plot data cleanly without external images.\n" +
         "- EXISTING DATA RESPECT: When updating or calculating in existing sheets, inspect [FULL_CONTEXT] for cell coordinates and existing values. Only modify or target the relevant ranges.\n"
       : "";
 
   const powerPointRules =
     activeHost === "PowerPoint"
       ? "\nPOWERPOINT SLIDE DESIGN & EXECUTIVE STORYTELLING RULES:\n" +
-        "- ACTION-ORIENTED TITLES: Every slide title in `generate_slides` must be a clear, informative action headline conveying the core takeaway (3 to 8 words), not a generic single word.\n" +
+        "- INSTITUTIONAL BRANDING (#156082): Use corporate primary color `#156082` for slide titles and accent cards. Apply Aptos font across all text frames via `apply_theme`.\n" +
+        "- SLIDE TABLES: Style all slide comparison tables with `format_slide_table` using `#156082` header shading and white bold text.\n" +
+        "- ACTION-ORIENTED TITLES: Every slide title in `generate_slides` or `insert_slide` must be a clear, informative action headline conveying the core takeaway (3 to 8 words), not a generic single word.\n" +
         "- CONCISE BULLET POINTS: Each slide in `generate_slides` MUST contain 3 to 5 concise bullet points. Keep each bullet under 15 words. Never emit dense paragraphs.\n" +
         "- BULLETS ARRAY FORMAT: In `generate_slides`, `bullets` MUST be an array of plain strings (`[\"Point 1\", \"Point 2\"]`). NEVER prefix strings in the array with Markdown hashes, hyphens, or asterisks (PowerPoint adds native bullet formatting automatically).\n" +
         "- SLIDE SELECTION REPLACEMENT: Use `replace_slide_selection` with `content` when modifying or refining currently selected slide text or shape content.\n"

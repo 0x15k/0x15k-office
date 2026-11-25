@@ -70,12 +70,12 @@ function requestDaemon(method, urlPath, payload = null) {
   });
 }
 
-function runWordAppleScript(scriptBody) {
+function runAppAppleScript(appName, scriptBody) {
   if (process.platform !== "darwin") {
-    throw new Error("Word AppleScript execution is only available on macOS.");
+    throw new Error(`${appName} AppleScript execution is only available on macOS.`);
   }
   const fullScript = `
-    tell application "Microsoft Word"
+    tell application "${appName}"
       try
         ${scriptBody}
       on error errMsg number errNum
@@ -96,6 +96,18 @@ function runWordAppleScript(scriptBody) {
   } catch (err) {
     throw new Error(`AppleScript error: ${err.message}`);
   }
+}
+
+function runWordAppleScript(scriptBody) {
+  return runAppAppleScript("Microsoft Word", scriptBody);
+}
+
+function runExcelAppleScript(scriptBody) {
+  return runAppAppleScript("Microsoft Excel", scriptBody);
+}
+
+function runPowerPointAppleScript(scriptBody) {
+  return runAppAppleScript("Microsoft PowerPoint", scriptBody);
 }
 
 // Tool definitions for MCP
@@ -277,6 +289,46 @@ const TOOLS = [
           description: "Enable single line borders. Default true."
         }
       }
+    }
+  },
+  {
+    name: "office_excel_get_active_sheet",
+    description: "Inspect active Microsoft Excel workbook and worksheet on macOS: returns workbook name, active sheet name, used range address, row count, column count, and sample cell values.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        maxRows: { type: "number", description: "Maximum number of rows to sample (default 20)." }
+      }
+    }
+  },
+  {
+    name: "office_excel_execute_applescript",
+    description: "Execute raw AppleScript targeting Microsoft Excel on macOS to query or modify workbooks, ranges, and formulas.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        script: { type: "string", description: "AppleScript commands executed inside 'tell application \"Microsoft Excel\"'." }
+      },
+      required: ["script"]
+    }
+  },
+  {
+    name: "office_powerpoint_get_presentation",
+    description: "Inspect active Microsoft PowerPoint presentation on macOS: returns presentation name, slide count, and list of slide titles.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "office_powerpoint_execute_applescript",
+    description: "Execute raw AppleScript targeting Microsoft PowerPoint on macOS to query or modify slides, shapes, and decks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        script: { type: "string", description: "AppleScript commands executed inside 'tell application \"Microsoft PowerPoint\"'." }
+      },
+      required: ["script"]
     }
   },
   {
@@ -539,6 +591,62 @@ async function handleToolCall(name, args = {}) {
       return {
         content: [{ type: "text", text: res }]
       };
+    }
+
+    case "office_excel_get_active_sheet": {
+      const script = `
+        try
+          set wb to active workbook
+          set wbName to name of wb
+          set ws to active sheet of wb
+          set wsName to name of ws
+          set uRange to used range of ws
+          set rCount to count of rows of uRange
+          set cCount to count of columns of uRange
+          return "WORKBOOK:" & wbName & "\\nSHEET:" & wsName & "\\nROWS:" & rCount & "\\nCOLS:" & cCount
+        on error errMsg
+          return "ERROR: " & errMsg
+        end try
+      `;
+      try {
+        const raw = runExcelAppleScript(script);
+        return { content: [{ type: "text", text: raw }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: e.message, status: "Excel not running or no open workbook" }) }] };
+      }
+    }
+
+    case "office_excel_execute_applescript": {
+      const script = String(args.script || "").trim();
+      if (!script) throw new Error("Argument 'script' is required.");
+      const res = runExcelAppleScript(script);
+      return { content: [{ type: "text", text: res }] };
+    }
+
+    case "office_powerpoint_get_presentation": {
+      const script = `
+        try
+          set pres to active presentation
+          set presName to name of pres
+          set sCount to count of slides of pres
+          return "PRESENTATION:" & presName & "\\nSLIDES:" & sCount
+        on error errMsg
+          return "ERROR: " & errMsg
+        end try
+      `;
+      try {
+        const raw = runPowerPointAppleScript(script);
+        return { content: [{ type: "text", text: raw }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: e.message, status: "PowerPoint not running or no open presentation" }) }] };
+      }
+    }
+
+    case "office_powerpoint_execute_applescript": {
+      const script = String(args.script || "").trim();
+      if (!script) throw new Error("Argument 'script' is required.");
+      const res = runPowerPointAppleScript(script);
+      return { content: [{ type: "text", text: res }] };
     }
 
     case "office_learn_skill": {

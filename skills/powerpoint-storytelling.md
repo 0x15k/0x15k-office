@@ -54,3 +54,8 @@ PowerPoint 16:9 widescreen dimensions are **960 x 540 points** (or 13.33 x 7.5 i
   - 2nd–3rd sentences: Key supporting data points and context not displayed on the visual card.
   - Anticipated executive questions and answers (FAQ prep).
 - Bullet discipline: Maximum 4 bullets per text container, each under 15 words. Bold the first 2–4 words of each bullet for visual scanning.
+
+## 4. Institutional Brand Theme (#156082) & Declarative Operations
+- **Theme Standardization**: Use `apply_theme` with `primaryColor: "#156082"` and `fontName: "Aptos"` to align all slides to corporate identity.
+- **Declarative Slide Insert**: Use `insert_slide` to add crisp executive slides with titles in `#156082` and clean bullet structure.
+- **Slide Tables**: Style comparison tables via `format_slide_table` using `#156082` header fill and white bold text.
