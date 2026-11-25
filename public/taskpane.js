@@ -1347,56 +1347,60 @@ async function restoreLastSnapshot() {
  */
 async function handleSubmit() {
   const inputEl = document.getElementById("prompt-input");
-  const prompt = inputEl.value.trim();
+  const prompt = (inputEl ? inputEl.value : "").trim();
   if (!prompt || state.isGenerating) return;
 
-  document.getElementById("slash-menu").classList.remove("open");
+  // Synchronous lock to completely prevent duplicate submission races
+  setGenerating(true);
+  inputEl.value = "";
+  inputEl.style.height = "auto";
+  const btnSend = document.getElementById("btn-send");
+  if (btnSend) btnSend.disabled = true;
+
+  document.getElementById("slash-menu")?.classList.remove("open");
 
   if (prompt.toLowerCase() === "/accept") {
-    inputEl.value = "";
+    setGenerating(false);
     acceptAllTrackedChanges();
     return;
   }
   if (prompt.toLowerCase() === "/reject") {
-    inputEl.value = "";
+    setGenerating(false);
     rejectAllTrackedChanges();
     return;
   }
   if (prompt.toLowerCase() === "/track") {
-    inputEl.value = "";
+    setGenerating(false);
     toggleTrackChangesMode();
     return;
   }
 
-  await syncContext(false);
-  const fullContext = await readActiveHostFullContext();
-  const hasSelectionContext =
-    (state.selectedText && state.selectedText.length > 0) || state.selectedType === "chart" || state.selectedType === "table";
-  const effectiveScope =
-    hasSelectionContext && state.documentScope === "selection" ? "selection" : "document";
-  const originalSelectionSnapshot = state.selectedText;
-
   const welcomeCard = document.getElementById("welcome-card");
   if (welcomeCard) welcomeCard.style.display = "none";
 
-  const contextTag =
-    effectiveScope === "selection"
-      ? (state.selectedType === "chart" ? "Chart" : state.selectedType === "table" ? "Table" : "Selection")
-      : state.host;
-  appendUserMessage(prompt, contextTag);
-  inputEl.value = "";
-  inputEl.style.height = "auto";
-
   const assistantMsgId = "msg-" + Date.now();
-  appendAssistantLoading(assistantMsgId);
-  setGenerating(true);
-
-  const selectedModel =
-    state.settings.provider === "agy"
-      ? state.settings.agyModel || "gemini-3.8-flash-high"
-      : state.settings.model;
 
   try {
+    await syncContext(false);
+    const fullContext = await readActiveHostFullContext();
+    const hasSelectionContext =
+      (state.selectedText && state.selectedText.length > 0) || state.selectedType === "chart" || state.selectedType === "table";
+    const effectiveScope =
+      hasSelectionContext && state.documentScope === "selection" ? "selection" : "document";
+    const originalSelectionSnapshot = state.selectedText;
+
+    const contextTag =
+      effectiveScope === "selection"
+        ? (state.selectedType === "chart" ? "Chart" : state.selectedType === "table" ? "Table" : "Selection")
+        : state.host;
+    appendUserMessage(prompt, contextTag);
+    appendAssistantLoading(assistantMsgId);
+
+    const selectedModel =
+      state.settings.provider === "agy"
+        ? state.settings.agyModel || "gemini-3.8-flash-high"
+        : state.settings.model;
+
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

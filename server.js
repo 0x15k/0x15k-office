@@ -1315,6 +1315,8 @@ app.post("/api/skillfy", async (req, res) => {
   }
 });
 
+const inflightChatRequests = new Map();
+
 app.post("/api/chat", async (req, res) => {
   const startTime = Date.now();
   const {
@@ -1343,6 +1345,25 @@ app.post("/api/chat", async (req, res) => {
   const effectiveModel =
     activeProvider === "agy" ? (model && model.trim() ? model.trim() : DEFAULT_AGY_MODEL) : model;
 
+  const inflightKey = `${activeHost}:${prompt.trim()}`;
+  if (inflightChatRequests.has(inflightKey)) {
+    console.log(`[POST /api/chat] Deduplicating concurrent request for: "${prompt.trim().slice(0, 50)}"`);
+    try {
+      const cachedResult = await inflightChatRequests.get(inflightKey);
+      return res.json(cachedResult);
+    } catch (e) {
+      // Continue normal execution if the prior failed
+    }
+  }
+
+  let resolveInflight;
+  let rejectInflight;
+  const inflightPromise = new Promise((resolve, reject) => {
+    resolveInflight = resolve;
+    rejectInflight = reject;
+  });
+  inflightChatRequests.set(inflightKey, inflightPromise);
+
   console.log(
     `[POST /api/chat] Host=${activeHost} | Provider=${activeProvider} | Model=${effectiveModel || "default"} | Prompt="${prompt.slice(0, 60)}"`
   );
@@ -1365,7 +1386,7 @@ app.post("/api/chat", async (req, res) => {
       });
       const durationMs = Date.now() - startTime;
       console.log(`[POST /api/chat] Slash command skillfy completed in ${durationMs}ms:`, learnedResult.skill?.name || "learned-rule");
-      return res.json({
+      const slashResponse = {
         reply: learnedResult.reply,
         operations: [],
         skill: learnedResult.skill,
@@ -1375,7 +1396,9 @@ app.post("/api/chat", async (req, res) => {
         model: effectiveModel,
         durationMs,
         timestamp: new Date().toISOString()
-      });
+      };
+      if (typeof resolveInflight === "function") resolveInflight(slashResponse);
+      return res.json(slashResponse);
     }
 
     const webContexts = await extractUrlContextFromPrompt(prompt);
@@ -1448,7 +1471,7 @@ app.post("/api/chat", async (req, res) => {
       saveLastSession(updatedHistory);
     } catch (e) {}
 
-    res.json({
+    const chatResponse = {
       reply: parsed.reply,
       operations: parsed.operations,
       rawReply: parsed.rawReply,
@@ -1459,15 +1482,20 @@ app.post("/api/chat", async (req, res) => {
       model: effectiveModel,
       durationMs,
       timestamp: new Date().toISOString()
-    });
+    };
+    if (typeof resolveInflight === "function") resolveInflight(chatResponse);
+    res.json(chatResponse);
   } catch (err) {
     const durationMs = Date.now() - startTime;
     console.error(`[POST /api/chat] Failed after ${durationMs}ms:`, err.message);
+    if (typeof rejectInflight === "function") rejectInflight(err);
     res.status(500).json({
       error: err.message,
       reply: `Error processing request: ${err.message}`,
       operations: []
     });
+  } finally {
+    inflightChatRequests.delete(inflightKey);
   }
 });
 
