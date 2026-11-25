@@ -790,13 +790,116 @@ function injectMarkdownLinks(text, linkMap) {
   return result;
 }
 
-function introspectDocumentStyles(paragraphsItems, hyperlinksMap) {
+async function introspectDocumentTables(context, tablesList) {
+  if (!tablesList || tablesList.length === 0) {
+    return { count: 0, tables: [] };
+  }
+
+  const tableSummaries = [];
+  try {
+    for (const tbl of tablesList) {
+      tbl.load("rows/items");
+    }
+    await context.sync();
+
+    for (const tbl of tablesList) {
+      const rows = tbl.rows.items || [];
+      if (rows.length === 0) continue;
+      rows[0].load("cells/items");
+      if (rows.length > 1) rows[1].load("cells/items");
+    }
+    await context.sync();
+
+    for (const tbl of tablesList) {
+      const rows = tbl.rows.items || [];
+      if (rows.length === 0) continue;
+      for (const cell of rows[0].cells.items || []) {
+        cell.load("shadingColor,font/name,font/size,font/color,font/bold,body/text");
+      }
+      if (rows.length > 1) {
+        for (const cell of rows[1].cells.items || []) {
+          cell.load("font/name,font/size,font/color,font/bold,body/text");
+        }
+      }
+    }
+    await context.sync();
+
+    for (let tIdx = 0; tIdx < tablesList.length; tIdx++) {
+      const tbl = tablesList[tIdx];
+      const rows = tbl.rows.items || [];
+      if (rows.length === 0) continue;
+
+      const headerCells = rows[0].cells.items || [];
+      const colCount = headerCells.length;
+      const headers = headerCells.map((c) => (c.body?.text || "").trim());
+
+      const rawShading = headerCells[0]?.shadingColor || "";
+      const validShading =
+        rawShading && rawShading !== "auto" && rawShading.toLowerCase() !== "#ffffff" && rawShading.toLowerCase() !== "white"
+          ? (rawShading.startsWith("#") ? rawShading : `#${rawShading}`)
+          : "";
+
+      const rawTextColor = headerCells[0]?.font?.color || "";
+      const validTextColor =
+        rawTextColor && rawTextColor !== "auto" && rawTextColor.toLowerCase() !== "#000000" && rawTextColor.toLowerCase() !== "black"
+          ? (rawTextColor.startsWith("#") ? rawTextColor : `#${rawTextColor}`)
+          : "#FFFFFF";
+
+      const headerFont = headerCells[0]?.font?.name || "";
+      const headerFontSize = headerCells[0]?.font?.size || 10;
+      const headerBold = headerCells[0]?.font?.bold !== false;
+
+      let firstColBold = false;
+      if (rows.length > 1) {
+        firstColBold = rows[1].cells.items?.[0]?.font?.bold === true;
+      }
+
+      tableSummaries.push({
+        tableIndex: tIdx + 1,
+        rowCount: rows.length,
+        colCount,
+        headers: headers.filter(Boolean),
+        isKeyValue: colCount === 2,
+        firstColBold,
+        headerShading: validShading,
+        headerTextColor: validTextColor,
+        headerFont,
+        headerFontSize,
+        headerBold
+      });
+    }
+  } catch (err) {
+    console.warn("Table style introspection warning:", err.message);
+  }
+
+  const detectedShadings = tableSummaries.map((t) => t.headerShading).filter(Boolean);
+  const detectedFonts = tableSummaries.map((t) => t.headerFont).filter(Boolean);
+  const detectedTextColors = tableSummaries.map((t) => t.headerTextColor).filter(Boolean);
+
+  return {
+    count: tableSummaries.length,
+    predominantHeaderShading: detectedShadings[0] || "",
+    predominantHeaderTextColor: detectedTextColors[0] || "#FFFFFF",
+    predominantHeaderFont: detectedFonts[0] || "Aptos",
+    hasKeyValueTables: tableSummaries.some((t) => t.isKeyValue),
+    tables: tableSummaries
+  };
+}
+
+function introspectDocumentStyles(paragraphsItems, hyperlinksMap, tableData = {}) {
   const fontCounts = {};
   const sizeCounts = {};
   const spacingCounts = {};
+  const colorCounts = {};
   let detectedSpaceBefore = 0;
   let detectedSpaceAfter = 2;
   let topHeaderAlignment = "Centered";
+
+  const headingStyles = {
+    title: null,
+    heading1: null,
+    heading2: null
+  };
 
   const nonBlankItems = (paragraphsItems || []).filter((p) => (p.text || "").trim().length > 0);
 
@@ -819,8 +922,48 @@ function introspectDocumentStyles(paragraphsItems, hyperlinksMap) {
     if (typeof p.spaceBefore === "number" && p.spaceBefore >= 0 && p.spaceBefore <= 12) {
       detectedSpaceBefore = p.spaceBefore;
     }
+    if (p.font && p.font.color) {
+      const c = String(p.font.color).toUpperCase();
+      if (c && c !== "#000000" && c !== "#FFFFFF" && c !== "AUTO" && c !== "BLACK" && c !== "WHITE") {
+        colorCounts[c] = (colorCounts[c] || 0) + 1;
+      }
+    }
+
+    const styleName = String(p.style || "").toLowerCase();
     if (idx === 0 && p.alignment) {
       topHeaderAlignment = String(p.alignment);
+    }
+
+    if (styleName.includes("title") || (idx === 0 && p.alignment && /center/i.test(String(p.alignment)) && (p.font?.size || 0) >= 15)) {
+      if (!headingStyles.title) {
+        headingStyles.title = {
+          font: p.font?.name,
+          size: p.font?.size,
+          color: p.font?.color,
+          bold: p.font?.bold,
+          alignment: String(p.alignment || "Center")
+        };
+      }
+    } else if (styleName.includes("heading 1") || styleName === "h1") {
+      if (!headingStyles.heading1) {
+        headingStyles.heading1 = {
+          font: p.font?.name,
+          size: p.font?.size,
+          color: p.font?.color,
+          bold: p.font?.bold,
+          spaceBefore: p.spaceBefore,
+          spaceAfter: p.spaceAfter
+        };
+      }
+    } else if (styleName.includes("heading 2") || styleName === "h2") {
+      if (!headingStyles.heading2) {
+        headingStyles.heading2 = {
+          font: p.font?.name,
+          size: p.font?.size,
+          color: p.font?.color,
+          bold: p.font?.bold
+        };
+      }
     }
   });
 
@@ -856,6 +999,21 @@ function introspectDocumentStyles(paragraphsItems, hyperlinksMap) {
     (predominantLineSpacingPt / 12).toFixed(2)
   );
 
+  let detectedAccentColor = "";
+  let maxColorCount = 0;
+  for (const [c, cnt] of Object.entries(colorCounts)) {
+    if (cnt > maxColorCount) {
+      maxColorCount = cnt;
+      detectedAccentColor = c;
+    }
+  }
+
+  const primaryBrandColor =
+    tableData.predominantHeaderShading ||
+    detectedAccentColor ||
+    headingStyles.heading1?.color ||
+    "";
+
   return {
     predominantFont,
     predominantFontSize,
@@ -864,6 +1022,9 @@ function introspectDocumentStyles(paragraphsItems, hyperlinksMap) {
     spaceBefore: detectedSpaceBefore,
     spaceAfter: detectedSpaceAfter,
     topHeaderAlignment,
+    primaryBrandColor,
+    headings: headingStyles,
+    tables: tableData,
     hyperlinksCount: Object.keys(hyperlinksMap || {}).length,
     hyperlinks: hyperlinksMap || {}
   };
@@ -875,9 +1036,11 @@ async function readActiveHostFullContext() {
       return await Word.run(async (context) => {
         const body = context.document.body;
         const paragraphs = body.paragraphs;
+        const tables = body.tables;
         body.load("text");
+        tables.load("items");
         paragraphs.load(
-          "items/text,items/style,items/font/name,items/font/size,items/lineSpacing,items/spaceBefore,items/spaceAfter,items/isListItem,items/leftIndent,items/alignment"
+          "items/text,items/style,items/font/name,items/font/size,items/font/color,items/font/bold,items/lineSpacing,items/spaceBefore,items/spaceAfter,items/isListItem,items/leftIndent,items/alignment"
         );
 
         const ooxml = body.getOoxml();
@@ -894,6 +1057,13 @@ async function readActiveHostFullContext() {
 
         await context.sync();
 
+        let tablesData = { count: 0, tables: [] };
+        try {
+          tablesData = await introspectDocumentTables(context, tables.items || []);
+        } catch (tblErr) {
+          console.warn("Table introspection error:", tblErr.message);
+        }
+
         const hyperlinksMap = {};
         if (desktopLinks && desktopLinks.items && desktopLinks.items.length > 0) {
           for (const item of desktopLinks.items) {
@@ -908,7 +1078,7 @@ async function readActiveHostFullContext() {
         }
         state.documentHyperlinks = hyperlinksMap;
 
-        const docStyle = introspectDocumentStyles(paragraphs.items, hyperlinksMap);
+        const docStyle = introspectDocumentStyles(paragraphs.items, hyperlinksMap, tablesData);
         state.documentStyle = docStyle;
 
         if (docStyle.predominantFont) {

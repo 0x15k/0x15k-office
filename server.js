@@ -582,6 +582,29 @@ function buildContextPayload({
       `- Top Header Alignment: ${documentStyle.topHeaderAlignment || "Centered"}`,
       `- Active Hyperlinks: ${documentStyle.hyperlinksCount || Object.keys(hyperlinks || {}).length}`
     ];
+
+    if (documentStyle.primaryBrandColor) {
+      styleLines.push(`- Detected Primary Brand Color: ${documentStyle.primaryBrandColor}`);
+    }
+    if (documentStyle.tables && documentStyle.tables.count > 0) {
+      styleLines.push(`- Total Document Tables: ${documentStyle.tables.count}`);
+      if (documentStyle.tables.predominantHeaderShading) {
+        styleLines.push(`- Table Header Fill: ${documentStyle.tables.predominantHeaderShading}`);
+        styleLines.push(`- Table Header Text: ${documentStyle.tables.predominantHeaderTextColor || "#FFFFFF"} (${documentStyle.tables.predominantHeaderFont || "Aptos"})`);
+      }
+      if (documentStyle.tables.hasKeyValueTables) {
+        styleLines.push(`- Detected 2-Column Key/Value Tables: Standardize with 30% first column (Bold Parameter) and 70% second column (Regular Detail)`);
+      }
+    }
+    if (documentStyle.headings) {
+      if (documentStyle.headings.heading1) {
+        styleLines.push(`- Heading 1 Style: ${documentStyle.headings.heading1.font || "Aptos"} ${documentStyle.headings.heading1.size || 14}pt Bold (Color: ${documentStyle.headings.heading1.color || "Default"})`);
+      }
+      if (documentStyle.headings.heading2) {
+        styleLines.push(`- Heading 2 Style: ${documentStyle.headings.heading2.font || "Aptos"} ${documentStyle.headings.heading2.size || 12}pt Bold`);
+      }
+    }
+
     sections.push(`[DOCUMENT_STYLE_STATE]\n${styleLines.join("\n")}\n[/DOCUMENT_STYLE_STATE]`);
   }
 
@@ -1018,22 +1041,14 @@ async function handleSkillfyRequest({
   apiKey = "",
   model = "",
   selectedText = "",
-  fullDocumentText = ""
+  fullDocumentText = "",
+  documentStyle = {}
 }) {
   const activeHost = normalizeHost(host);
-  const userNote = prompt.replace(/^\/skillfy\b/i, "").trim();
+  const userNote = prompt.replace(/^\/(?:skillfy|learn)\b/i, "").trim();
   let historyList = Array.isArray(conversationHistory) && conversationHistory.length > 0
     ? conversationHistory.slice(-8)
     : loadLastSession().slice(-8);
-
-  if (historyList.length === 0 && !userNote && !selectedText) {
-    return {
-      reply:
-        "No conversation history or rule note provided yet. Have a few turns in chat (or pass a rule directly, e.g. `/skillfy always keep Technical Skills as separate bold Category: list paragraphs`) so I can distill a reusable skill.",
-      operations: [],
-      skill: null
-    };
-  }
 
   const transcript = historyList
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${String(m.content || "").slice(0, 1200)}`)
@@ -1041,12 +1056,12 @@ async function handleSkillfyRequest({
 
   const skillfySystem =
     "You are an expert AI compiler for Microsoft Office skills (Claude Code / Agent Skill standard).\n" +
-    "Your mission: Analyze the user's corrections, complaints, and formatting preferences to distill a permanent, high-precision, completely generic skill.\n\n" +
-    "CRITICAL GENERALIZATION & PRIVACY DIRECTIVES:\n" +
-    "1. ZERO HARDCODED PERSONAL DATA OR SPECIFIC ENTITIES: NEVER include real candidate names, specific company or university names, real phone numbers, real emails, or personal profile URLs.\n" +
-    "2. GEOGRAPHIC & DOMAIN AGNOSTICISM: NEVER hardcode specific countries or cities. Formulate all rules generically (e.g., 'maintain uniform geographic granularity across all entries, such as [City, Region/Country]'). The skill MUST apply universally to ANY user, ANY organization, and ANY country.\n" +
-    "3. STRUCTURAL BLUEPRINT / MOCKUP: Always construct a clean ASCII wireframe/mockup illustrating the expected document or section layout flow (e.g. [Header] -> [Summary Table] -> [Visual Exhibit with Caption] -> [Narrative Analysis] -> [Technical Details]).\n" +
-    "4. ORDERED EXECUTION STEPS: Detail 3 to 6 sequential imperative operational steps required to achieve compliance (e.g., Step 1: Detect document coordinates, Step 2: Harmonize metrics, Step 3: Format elements, Step 4: Audit alignment).\n" +
+    "Your mission: Analyze the REAL empirical document structure, formatting, tables, headings, and styles from [INSPECTED_DOCUMENT_ARCHITECTURE_AND_STYLES] and [DOCUMENT_SAMPLE] to distill a permanent, high-precision, completely generic skill.\n\n" +
+    "CRITICAL GENERALIZATION & EMPIRICAL DIRECTIVES:\n" +
+    "1. ZERO HARDCODING: NEVER hardcode arbitrary colors or fonts that contradict the inspected document. Base all rules directly on the detected styles (table header shading, text color, heading hierarchy, 2-column key/value proportions).\n" +
+    "2. PRIVACY & ANONYMIZATION: NEVER include real candidate names, specific client company names, phone numbers, real emails, or URLs. Use clean generic placeholders (e.g. [Company Name], [Project Code], [Target URL]).\n" +
+    "3. STRUCTURAL BLUEPRINT / MOCKUP: Always construct a clean ASCII wireframe/mockup illustrating the exact expected document and table layout flow.\n" +
+    "4. ORDERED EXECUTION STEPS: Detail 3 to 6 sequential imperative operational steps required to achieve compliance.\n" +
     "5. ANONYMOUS GENERIC EXAMPLES: In antiPattern and goodPattern, use clean, anonymous placeholders showing the defect versus the compliant layout.\n\n" +
     "Output ONLY valid JSON matching this schema:\n" +
     "{\n" +
@@ -1071,10 +1086,18 @@ async function handleSkillfyRequest({
     "Do NOT invoke any tools. Output strictly valid JSON.";
 
   const contextParts = [`[TARGET_HOST]\n${activeHost}\n[/TARGET_HOST]`];
-  if (transcript) contextParts.push(`[CONVERSATION_TRANSCRIPT]\n${transcript}\n[/CONVERSATION_TRANSCRIPT]`);
-  if (userNote) contextParts.push(`[USER_NOTE]\n${userNote}\n[/USER_NOTE]`);
-  if (selectedText) contextParts.push(`[SELECTED_DOCUMENT_CONTEXT]\n${selectedText.slice(0, 1500)}\n[/SELECTED_DOCUMENT_CONTEXT]`);
-  else if (fullDocumentText) contextParts.push(`[DOCUMENT_SAMPLE]\n${fullDocumentText.slice(0, 1500)}\n[/DOCUMENT_SAMPLE]`);
+  if (documentStyle && Object.keys(documentStyle).length > 0) {
+    contextParts.push(`[INSPECTED_DOCUMENT_ARCHITECTURE_AND_STYLES]\n${JSON.stringify(documentStyle, null, 2)}\n[/INSPECTED_DOCUMENT_ARCHITECTURE_AND_STYLES]`);
+  }
+  if (fullDocumentText) {
+    contextParts.push(`[DOCUMENT_SAMPLE]\n${fullDocumentText.slice(0, 50000)}\n[/DOCUMENT_SAMPLE]`);
+  }
+  if (userNote) {
+    contextParts.push(`[USER_NOTE]\n${userNote}\n[/USER_NOTE]`);
+  }
+  if (transcript) {
+    contextParts.push(`[CONVERSATION_TRANSCRIPT]\n${transcript}\n[/CONVERSATION_TRANSCRIPT]`);
+  }
 
   const rawJson = await runProviderCompletion({
     provider,
@@ -1185,7 +1208,8 @@ app.post("/api/skillfy", async (req, res) => {
     apiKey = "",
     model = "",
     selectedText = "",
-    fullDocumentText = ""
+    fullDocumentText = "",
+    documentStyle = {}
   } = req.body;
 
   const activeHost = normalizeHost(host);
@@ -1202,7 +1226,8 @@ app.post("/api/skillfy", async (req, res) => {
       apiKey,
       model: effectiveModel,
       selectedText,
-      fullDocumentText
+      fullDocumentText,
+      documentStyle
     });
     res.json({
       ...result,
@@ -1264,7 +1289,8 @@ app.post("/api/chat", async (req, res) => {
         apiKey,
         model: effectiveModel,
         selectedText,
-        fullDocumentText
+        fullDocumentText,
+        documentStyle
       });
       const durationMs = Date.now() - startTime;
       console.log(`[POST /api/chat] Learning/Skillfy completed in ${durationMs}ms:`, learnedResult.skill?.name || "learned-rule");
