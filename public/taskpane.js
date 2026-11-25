@@ -1706,12 +1706,19 @@ function renderAssistantMessage(
   }
 }
 
-function renderAssistantError(id, errorText) {
+function renderAssistantError(id, rawError) {
   const msgEl = document.getElementById(id);
   if (!msgEl) return;
+
+  let safeMessage = String(rawError || "Error al procesar la solicitud.");
+  // Strip any accidental shell commands, argument dumps, or context leaks
+  if (safeMessage.includes("-p") || safeMessage.includes("[SYSTEM]") || safeMessage.includes("Command failed:") || safeMessage.length > 300) {
+    safeMessage = "Error en la consulta con el modelo de IA. La sesión fue reiniciada o la respuesta excedió el tiempo límite. Por favor, intenta de nuevo.";
+  }
+
   msgEl.innerHTML = `
-    <div class="assistant-body" style="color: var(--danger);">
-      <strong>Error:</strong> ${escapeHtml(errorText)}
+    <div class="assistant-body" style="color: var(--danger); font-size: 13px; line-height: 1.4;">
+      <strong>⚠️ Error:</strong> ${escapeHtml(safeMessage)}
     </div>
   `;
   scrollToBottom();

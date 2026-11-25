@@ -802,12 +802,23 @@ function execAgyOnce(fullPrompt, agyModel, allowEffort = true) {
       },
       (error, stdout, stderr) => {
         if (error) {
-          const detail = (stderr || error.message || "").trim();
-          if (allowEffort && /conflicts with --effort|effort.*not supported|invalid.*effort/i.test(detail)) {
+          const stderrClean = (stderr || "").trim();
+          if (allowEffort && /conflicts with --effort|effort.*not supported|invalid.*effort/i.test(stderrClean)) {
             console.warn(`[execAgyOnce] Effort flag conflict detected for model ${agyModel}. Retrying without --effort...`);
             return execAgyOnce(fullPrompt, agyModel, false).then(resolve).catch(reject);
           }
-          return reject(new Error(`Antigravity CLI error (${AGY_PATH}): ${detail}`));
+
+          let cleanDetail = stderrClean;
+          if (!cleanDetail) {
+            if (error.killed || error.signal === "SIGTERM" || error.signal === "SIGKILL") {
+              cleanDetail = "The AI process was interrupted or restarted. Please try again.";
+            } else if (error.code === "ETIMEDOUT") {
+              cleanDetail = "The AI request timed out. Please try again.";
+            } else {
+              cleanDetail = `Process exited with code ${error.code || error.signal || "unknown"}.`;
+            }
+          }
+          return reject(new Error(`Antigravity CLI error: ${cleanDetail}`));
         }
         resolve(stdout.trim());
       }
@@ -1487,11 +1498,19 @@ app.post("/api/chat", async (req, res) => {
     res.json(chatResponse);
   } catch (err) {
     const durationMs = Date.now() - startTime;
-    console.error(`[POST /api/chat] Failed after ${durationMs}ms:`, err.message);
+    const safeLogMsg = err.message ? err.message.slice(0, 150) : "Unknown error";
+    console.error(`[POST /api/chat] Failed after ${durationMs}ms:`, safeLogMsg);
     if (typeof rejectInflight === "function") rejectInflight(err);
+
+    // Sanitize user-facing error to prevent prompt/document leakage
+    let safeError = "No se pudo procesar la solicitud con el modelo de IA. Por favor, intenta de nuevo.";
+    if (err.message && !err.message.includes("-p") && !err.message.includes("[SYSTEM]") && !err.message.includes("Command failed:")) {
+      safeError = err.message.slice(0, 200);
+    }
+
     res.status(500).json({
-      error: err.message,
-      reply: `Error processing request: ${err.message}`,
+      error: safeError,
+      reply: `⚠️ ${safeError}`,
       operations: []
     });
   } finally {
