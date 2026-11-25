@@ -211,17 +211,52 @@ function listAllSkills() {
 
 function loadSkillsForRequest({ host = "Word", prompt = "", selectedText = "", fullDocumentText = "" }) {
   const activeHost = normalizeHost(host);
-  const searchCorpus = `${prompt} ${selectedText} ${String(fullDocumentText || "").slice(0, 1500)}`.toLowerCase();
+  const searchCorpus = `${prompt} ${selectedText} ${String(fullDocumentText || "").slice(0, 3000)}`.toLowerCase();
 
-  return listAllSkills().filter((skill) => {
+  const allSkills = listAllSkills();
+  const matched = [];
+  const learnedSkills = [];
+
+  for (const skill of allSkills) {
     const hostMatch =
       !skill.hosts ||
       skill.hosts.length === 0 ||
       skill.hosts.some((h) => h.toLowerCase() === activeHost.toLowerCase());
-    if (!hostMatch) return false;
-    if (skill.alwaysActive || skill.learned) return true;
-    return skill.keywords.some((kw) => searchCorpus.includes(kw));
-  });
+    if (!hostMatch) continue;
+
+    if (skill.learned || skill.id.startsWith("learned-")) {
+      learnedSkills.push(skill);
+      continue;
+    }
+
+    if (skill.alwaysActive) {
+      matched.push(skill);
+      continue;
+    }
+
+    if (Array.isArray(skill.keywords) && skill.keywords.some((kw) => searchCorpus.includes(kw))) {
+      matched.push(skill);
+    }
+  }
+
+  // De-duplicate learned skills: select top 1-2 most relevant learned skills instead of flooding prompt
+  if (learnedSkills.length > 0) {
+    const scoredLearned = learnedSkills.map((sk) => {
+      let score = 0;
+      if (Array.isArray(sk.keywords)) {
+        for (const kw of sk.keywords) {
+          if (searchCorpus.includes(kw)) score += 2;
+        }
+      }
+      const nameLower = (sk.name || "").toLowerCase();
+      if (searchCorpus.includes(nameLower)) score += 3;
+      return { sk, score };
+    });
+    scoredLearned.sort((a, b) => b.score - a.score);
+    matched.push(...scoredLearned.slice(0, 2).map((item) => item.sk));
+  }
+
+  return matched;
 }
 
 function writeSkillToDirectories(filename, markdownContent) {
@@ -794,7 +829,7 @@ function execAgyOnce(fullPrompt, agyModel, allowEffort = true) {
       {
         cwd: "/tmp",
         maxBuffer: 1024 * 1024 * 10,
-        timeout: 90000,
+        timeout: 180000,
         env: {
           ...process.env,
           PATH: ENRICHED_PATH
@@ -810,10 +845,10 @@ function execAgyOnce(fullPrompt, agyModel, allowEffort = true) {
 
           let cleanDetail = stderrClean;
           if (!cleanDetail) {
-            if (error.killed || error.signal === "SIGTERM" || error.signal === "SIGKILL") {
+            if (error.code === "ETIMEDOUT" || (error.killed && error.signal === "SIGTERM")) {
+              cleanDetail = "The AI request timed out processing this full document. Please retry or narrow down selection.";
+            } else if (error.killed || error.signal === "SIGKILL") {
               cleanDetail = "The AI process was interrupted or restarted. Please try again.";
-            } else if (error.code === "ETIMEDOUT") {
-              cleanDetail = "The AI request timed out. Please try again.";
             } else {
               cleanDetail = `Process exited with code ${error.code || error.signal || "unknown"}.`;
             }
@@ -1373,6 +1408,7 @@ app.post("/api/chat", async (req, res) => {
     resolveInflight = resolve;
     rejectInflight = reject;
   });
+  inflightPromise.catch(() => {}); // Prevent unhandled rejection process crash
   inflightChatRequests.set(inflightKey, inflightPromise);
 
   console.log(
