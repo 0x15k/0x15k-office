@@ -1278,7 +1278,7 @@ app.post("/api/chat", async (req, res) => {
     const trimmedPrompt = prompt.trim();
     const isLearningIntent =
       /^\/(?:skillfy|learn)\b/i.test(trimmedPrompt) ||
-      /\b(?:para que aprendas|aprende(?:s)?(?: de (?:esto|mis cambios|lo que hice))?|guarda (?:este|esta) (?:estilo|formato|regla|patr[oó]n)|memoriza|registra este patr[oó]n|aprende este formato|aprendas)\b/i.test(trimmedPrompt);
+      /\b(?:aprende|aprendas|extrae.*(?:formato|dise[ñn]o|estilo|patr[oó]n)|guarda.*(?:formato|dise[ñn]o|estilo|regla|patr[oó]n)|memoriza|registra.*(?:formato|dise[ñn]o|patr[oó]n)|analiza.*(?:formato|dise[ñn]o|estilo)|skillfy|learn)\b/i.test(trimmedPrompt);
 
     if (isLearningIntent) {
       const learnedResult = await handleSkillfyRequest({
